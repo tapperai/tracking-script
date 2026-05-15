@@ -1,4 +1,4 @@
-___TERMS_OF_SERVICE___
+﻿___TERMS_OF_SERVICE___
 
 By creating or modifying this file you agree to Google Tag Manager's Community
 Template Gallery Developer Terms of Service available at
@@ -12,6 +12,7 @@ ___INFO___
   "type": "TAG",
   "id": "cvt_tapperai",
   "version": 1,
+  "__wm": "VGVtcGxhdGUtQXV0aG9yX1RhcHBlckFkRnJhdWRQcm90ZWN0aW9uLVRhcHBlcg==",
   "displayName": "Tapper Ad Fraud Protection",
   "categories": ["ADVERTISING", "ANALYTICS", "REMARKETING"],
   "description": "Monitors ad traffic and protects your campaigns from invalid clicks and ad fraud. Requires a Tapper account — get your Public Key at tapper.ai.",
