@@ -9,19 +9,25 @@ Google may provide), as modified from time to time.
 ___INFO___
 
 {
-  "type": "TAG",
-  "id": "cvt_tapperai",
-  "version": 1,
-  "__wm": "VGVtcGxhdGUtQXV0aG9yX1RhcHBlckFkRnJhdWRQcm90ZWN0aW9uLVRhcHBlcg==",
   "displayName": "Tapper Ad Fraud Protection",
-  "categories": ["ADVERTISING", "ANALYTICS", "REMARKETING"],
-  "description": "Monitors ad traffic and protects your campaigns from invalid clicks and ad fraud. Requires a Tapper account — get your Public Key at tapper.ai.",
+  "__wm": "VGVtcGxhdGUtQXV0aG9yX1RhcHBlckFkRnJhdWRQcm90ZWN0aW9uLXRhcHBlcmFp",
+  "description": "Monitors ad traffic and protects your campaigns from invalid clicks and ad fraud. Requires a Tapper account - get your Public Key at tapper.ai.",
+  "securityGroups": [],
+  "categories": [
+    "ADVERTISING",
+    "ANALYTICS",
+    "REMARKETING"
+  ],
+  "id": "cvt_temp_public_id",
+  "type": "TAG",
+  "version": 1,
   "brand": {
     "id": "github.com_tapperai",
     "displayName": "Tapper"
   },
-  "containerContexts": ["WEB"],
-  "securityGroups": []
+  "containerContexts": [
+    "WEB"
+  ]
 }
 
 
