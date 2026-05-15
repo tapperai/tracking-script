@@ -21,10 +21,6 @@ ___INFO___
   "id": "cvt_temp_public_id",
   "type": "TAG",
   "version": 1,
-  "brand": {
-    "id": "github.com_tapperai",
-    "displayName": "Tapper"
-  },
   "containerContexts": [
     "WEB"
   ]
