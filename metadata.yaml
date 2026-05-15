@@ -1,5 +1,5 @@
 homepage: "https://tapper.ai"
 documentation: "https://docs.tapper.ai"
 versions:
-  - sha: 054fd1f2b80d84d629b411ee0aeca95fd273f66e
+  - sha: ba301d9e1988081f0619c281d167e887264f5973
     changeNotes: Initial release of Tapper Ad Fraud Protection template.
