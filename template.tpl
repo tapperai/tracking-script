@@ -32,8 +32,21 @@ ___TEMPLATE_PARAMETERS___
   {
     "type": "TEXT",
     "name": "pk",
-    "displayName": "pk",
-    "simpleValueType": true
+    "displayName": "Public Key",
+    "simpleValueType": true,
+    "help": "Your Tapper Public Key from the Tapper dashboard (Settings → Public Key). Starts with \"pk_live_\" or \"pk_test_\".",
+    "valueValidators": [
+      {
+        "type": "NON_EMPTY"
+      },
+      {
+        "type": "REGEX",
+        "args": [
+          "^pk_(live|test)_[A-Za-z0-9]+$"
+        ],
+        "errorMessage": "Enter a valid Tapper Public Key (must start with \"pk_live_\" or \"pk_test_\")."
+      }
+    ]
   }
 ]
 
@@ -96,7 +109,58 @@ ___WEB_PERMISSIONS___
         "publicId": "access_globals",
         "versionId": "1"
       },
-      "param": []
+      "param": [
+        {
+          "key": "keys",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "tapper"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
     },
     "isRequired": true
   },

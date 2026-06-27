@@ -1,0 +1,28 @@
+name: Validate GTM Template
+
+# This repo has no build/deploy job of its own: the GTM Community Template
+# Gallery deploys by reading the default branch + metadata.yaml directly on
+# push. So the "deploy" is the push to the default branch, and the only place
+# to gate it is at PR time (and on push) BEFORE the branch Google reads is
+# updated. This job is that gate.
+#
+# It runs ONLY env-independent checks (pure python3 stdlib, no network, no
+# secrets, no npm) so it can never block a legitimate template change for a
+# flaky/credential reason. It validates that every JSON section parses and that
+# every global / permission the sandboxed JS actually uses is granted — exactly
+# the class of bug (empty access_globals) that previously broke runtime init.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-template:
+    name: Validate template.tpl (pre-deploy gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate template structure and permission grants
+        run: python3 scripts/validate_template.py template.tpl
