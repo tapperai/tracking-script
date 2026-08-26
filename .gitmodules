@@ -1,0 +1,3 @@
+[submodule "document-first-template"]
+	path = document-first-template
+	url = git@github.com:tapperai/document-first-template.git
