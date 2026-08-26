@@ -1,6 +1,6 @@
 # tracking-script — Documentation
 
-> **Approach:** [DOCUMENT_FIRST.md](../document-first-template/DOCUMENT_FIRST.md) — Write the spec, then write the code.
+> **Approach:** [DOCUMENT_FIRST.md](DOCUMENT_FIRST.md) — Write the spec, then write the code.
 >
 > **Template:** [SPEC.md](../document-first-template/_templates/SPEC.md) — Copy this to start a new spec.
 
