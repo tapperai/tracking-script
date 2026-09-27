@@ -14,6 +14,10 @@ ___INFO___
   "version": 1,
   "securityGroups": [],
   "displayName": "Tapper - Monitoring Script",
+  "categories": [
+    "ADVERTISING",
+    "ANALYTICS"
+  ],
   "brand": {
     "id": "brand_dummy",
     "displayName": "",
@@ -138,7 +142,7 @@ ___WEB_PERMISSIONS___
                 "mapValue": [
                   {
                     "type": 1,
-                    "string": "tapper"
+                    "string": "tapper.init"
                   },
                   {
                     "type": 8,
@@ -196,19 +200,74 @@ ___WEB_PERMISSIONS___
 ___TESTS___
 
 scenarios:
-- name: Untitled test 1
+- name: Loads the bundle and calls tapper.init with the Public Key
   code: |-
     const mockData = {
-      pk: 'pk_test_123456789',
-      gtmOnSuccess: () => {},
-      gtmOnFailure: () => fail('gtmOnFailure should not be called')
+      pk: 'pk_test_123456789'
     };
+    const injected = [];
+    const calls = [];
+    mock('injectScript', (url, onSuccess, onFailure, cacheToken) => {
+      injected.push({url: url, cacheToken: cacheToken});
+      onSuccess();
+    });
+    mock('callInWindow', (path, arg) => {
+      calls.push({path: path, arg: arg});
+    });
 
-    // Call runCode to run the template's code.
     runCode(mockData);
 
-    // Verify that the tag finished successfully.
+    assertThat(injected.length).isStrictlyEqualTo(1);
+    assertThat(injected[0].url).isStrictlyEqualTo('https://monitor.tapper.ai/bundle.js');
+    assertThat(calls.length).isStrictlyEqualTo(1);
+    assertThat(calls[0].path).isStrictlyEqualTo('tapper.init');
+    assertThat(calls[0].arg).isStrictlyEqualTo('pk_test_123456789');
     assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: The tapper.init call is permitted (callInWindow NOT mocked)
+  code: |-
+    // GTM skips permission checks only for MOCKED APIs, so callInWindow is
+    // deliberately left real here: with the access_globals grant missing or
+    // granted on the wrong key (e.g. 'tapper' instead of 'tapper.init'),
+    // callInWindow throws "Prohibited execute on global variable:
+    // tapper.init." inside the success callback, gtmOnSuccess is never
+    // reached and this scenario fails. window.tapper does not exist in the
+    // test sandbox, so the permitted call returns undefined.
+    mock('injectScript', (url, onSuccess) => {
+      onSuccess();
+    });
+
+    runCode({pk: 'pk_live_abc123'});
+
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: Bundle load failure reports gtmOnFailure and never calls tapper.init
+  code: |-
+    let initCalls = 0;
+    mock('injectScript', (url, onSuccess, onFailure) => {
+      onFailure();
+    });
+    mock('callInWindow', () => {
+      initCalls = initCalls + 1;
+    });
+
+    runCode({pk: 'pk_live_abc123'});
+
+    assertThat(initCalls).isStrictlyEqualTo(0);
+    assertApi('gtmOnFailure').wasCalled();
+    assertApi('gtmOnSuccess').wasNotCalled();
+- name: Missing Public Key fails fast without injecting the bundle
+  code: |-
+    let injectCalls = 0;
+    mock('injectScript', () => {
+      injectCalls = injectCalls + 1;
+    });
+
+    runCode({pk: ''});
+
+    assertThat(injectCalls).isStrictlyEqualTo(0);
+    assertApi('gtmOnFailure').wasCalled();
+    assertApi('gtmOnSuccess').wasNotCalled();
 setup: ''
 
 

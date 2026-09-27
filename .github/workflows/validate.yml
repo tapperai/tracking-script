@@ -10,7 +10,10 @@ name: Validate GTM Template
 # secrets, no npm) so it can never block a legitimate template change for a
 # flaky/credential reason. It validates that every JSON section parses and that
 # every global / permission the sandboxed JS actually uses is granted — exactly
-# the class of bug (empty access_globals) that previously broke runtime init.
+# the class of bug (empty access_globals) that previously broke runtime init —
+# with the FULL dotted path (GTM matches it exactly), that the version the
+# Gallery serves (first sha in metadata.yaml) is this template, and runs the
+# template's own ___TESTS___ scenarios (node, no npm install).
 
 on:
   push:
@@ -24,5 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate template structure and permission grants
-        run: python3 scripts/validate_template.py template.tpl
+        with:
+          # Full history: --metadata resolves every sha in metadata.yaml and
+          # checks the Gallery-served one is an ancestor of HEAD.
+          fetch-depth: 0
+      - name: Validate template structure, exact permission grants and the Gallery-served sha
+        run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
+      - name: Run the ___TESTS___ scenarios (GTM permission semantics)
+        run: node scripts/run_template_tests.mjs template.tpl
