@@ -1,5 +1,9 @@
 homepage: "https://tapper.ai"
 documentation: "https://docs.tapper.ai"
 versions:
+  - sha: b9f6e9a9edd98a80586bdf3a65c8ca7ccd20b6bf
+    changeNotes: |-
+      Fixes the monitor never starting: the template now has permission to call tapper.init (access globals, execute on "tapper.init").
+      Adds Gallery categories.
   - sha: 551ea056ee19ff84fabea15f7a9316242902fc24
     changeNotes: Initial release of Tapper Ad Fraud Protection template.
