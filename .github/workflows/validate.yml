@@ -21,13 +21,21 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: this job only reads the repo. main is the Gallery release
+# channel, so the job token must never be able to write to it.
+permissions:
+  contents: read
+
 jobs:
   validate-template:
     name: Validate template.tpl (pre-deploy gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # Do not store the job token in .git/config: later steps run
+          # template and test code, which must not be able to reuse it.
+          persist-credentials: false
           # Full history: --metadata resolves every sha in metadata.yaml and
           # checks the Gallery-served one is an ancestor of HEAD.
           fetch-depth: 0
