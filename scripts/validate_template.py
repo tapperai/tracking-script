@@ -20,7 +20,15 @@ bug BEFORE the Community Template Gallery picks up a commit:
      (injectScript -> inject_script, callInWindow -> access_globals,
       logToConsole -> logging).
   4. ___INFO___ carries 1-3 Community Template Gallery categories.
-  5. With --metadata metadata.yaml: the version the Gallery serves (the FIRST
+  5. LEAST PRIVILEGE (a merge to main is a Gallery release into every
+     installer's site, so a widened grant must turn CI red, not ship green):
+       - the access_globals keys granted for each operation EQUAL the literal
+         paths the JS uses with that operation (no extra keys);
+       - the inject_script URLs EQUAL the literal http(s) URLs in the JS, and
+         none contains a wildcard;
+       - logging environments is exactly "debug";
+       - no permission is granted that no require()'d API needs.
+  6. With --metadata metadata.yaml: the version the Gallery serves (the FIRST
      `sha:` in metadata.yaml) is a commit reachable from HEAD whose
      template.tpl is byte-identical to the one being validated. A template
      change that never reaches metadata.yaml never reaches the Gallery (the
@@ -112,10 +120,17 @@ def validate(content, label):
 
     granted_perms = set()
     granted_globals = {"read": set(), "write": set(), "execute": set()}
+    granted_urls = []
+    logging_envs = []
     if "WEB_PERMISSIONS" in json_sections:
         for grant in json_sections["WEB_PERMISSIONS"]:
             pub = grant["instance"]["key"]["publicId"]
             granted_perms.add(pub)
+            for p in grant["instance"].get("param", []):
+                if pub == "inject_script" and p.get("key") == "urls":
+                    granted_urls += [li.get("string") for li in p["value"].get("listItem", [])]
+                if pub == "logging" and p.get("key") == "environments":
+                    logging_envs.append(p["value"].get("string"))
             if pub == "access_globals":
                 for p in grant["instance"].get("param", []):
                     if p.get("key") != "keys":
@@ -131,6 +146,7 @@ def validate(content, label):
                                 granted_globals[op].add(row["key"])
 
     # 2. every window-API path granted EXACTLY, with the operation it needs.
+    used_globals = {"read": set(), "write": set(), "execute": set()}
     for api, raw_args in WINDOW_CALL_RE.findall(js):
         args = raw_args.split(",")
         for idx, ops in enumerate(WINDOW_API_OPS[api]):
@@ -142,6 +158,8 @@ def validate(content, label):
                 )
                 continue
             path = m.group(2)
+            for op in ops:
+                used_globals[op].add(path)
             missing = [op for op in ops if path not in granted_globals[op]]
             if missing:
                 have = sorted(k for op in ops for k in granted_globals[op])
@@ -154,8 +172,11 @@ def validate(content, label):
                 print(f"OK   {api}('{path}') -> access_globals {'+'.join(ops)} on '{path}' granted")
 
     # 3. require()'d APIs have their permission.
+    needed_perms = set()
     for api in re.findall(r"require\(['\"]([^'\"]+)['\"]\)", js):
         need = REQUIRE_PERMISSION.get(api, "__UNKNOWN__")
+        if need not in (None, "__UNKNOWN__"):
+            needed_perms.add(need)
         if need == "__UNKNOWN__":
             failures.append(
                 f"require('{api}') is not in the known-API permission map; "
@@ -178,6 +199,37 @@ def validate(content, label):
             failures.append(f"___INFO___.categories has unsupported values: {bad}")
         else:
             print(f"OK   Gallery categories: {cats}")
+
+    # 5. least privilege: nothing granted beyond what the JS uses.
+    unneeded = sorted(granted_perms - needed_perms)
+    if unneeded:
+        failures.append(f"permission(s) granted that no require()'d API needs: {unneeded}")
+    for op in ("read", "write", "execute"):
+        extra = sorted(granted_globals[op] - used_globals[op])
+        if extra:
+            failures.append(
+                f"access_globals grants {op} on {extra}, which the sandboxed JS never uses "
+                f"with {op} (grants must equal the literal paths used)"
+            )
+    if "inject_script" in granted_perms or granted_urls:
+        wild = [u for u in granted_urls if u is None or "*" in u]
+        if wild:
+            failures.append(f"inject_script grants wildcard/non-literal URL(s): {wild}")
+        literal_urls = {m[1] for m in re.findall(r"(['\"])(https?://[^'\"]*)\1", js)}
+        if set(u for u in granted_urls if u) != literal_urls:
+            failures.append(
+                f"inject_script URLs {sorted(u for u in granted_urls if u)} must equal the literal "
+                f"script URL(s) in the JS {sorted(literal_urls)}"
+            )
+        elif not wild:
+            print(f"OK   inject_script URLs equal the JS literal(s): {sorted(literal_urls)}")
+    if "logging" in granted_perms:
+        if logging_envs != ["debug"]:
+            failures.append(f"logging environments must be exactly 'debug', got {logging_envs}")
+        else:
+            print("OK   logging environments: debug only")
+    if not failures:
+        print("OK   least privilege: no grant beyond what the sandboxed JS uses")
 
     return [f"[{label}] {f_}" for f_ in failures]
 

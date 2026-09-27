@@ -35,7 +35,12 @@ node scripts/run_template_tests.mjs template.tpl
    granted — `injectScript` → `inject_script`, `callInWindow` →
    `access_globals`, `logToConsole` → `logging`.
 4. `___INFO___.categories` holds 1-3 Gallery categories.
-5. (`--metadata`) the first `sha` in `metadata.yaml` (the version the Gallery
+5. Least privilege: no `access_globals` key or operation beyond the literal
+   paths the JS uses with it, `inject_script` URLs equal to the literal
+   script URL in the JS (no wildcards), `logging` on `debug` only, and no
+   permission that no `require()`d API needs. (The `___TESTS___` runner does
+   not check this; only the validator does.)
+6. (`--metadata`) the first `sha` in `metadata.yaml` (the version the Gallery
    serves) is an ancestor of HEAD and carries this exact `template.tpl`.
 
 Exits non-zero on any failure — this is the check that would have caught an

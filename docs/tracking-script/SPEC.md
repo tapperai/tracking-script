@@ -78,10 +78,17 @@ Not applicable — this repo has no database. The only "schema" is the
 | `access_globals` | key `tapper.init`, read=false, write=false, execute=true |
 | `inject_script` | urls: `https://monitor.tapper.ai/bundle.js` |
 
-These three grants are exactly what the sandboxed JS needs and nothing more
-(see `scripts/validate_template.py`, which fails CI if the sandboxed JS uses
-an API without its matching grant — this is the "empty access_globals" class
-of bug the validator was written to catch).
+These three grants are exactly what the sandboxed JS needs and nothing more,
+and `scripts/validate_template.py` enforces both directions in CI:
+
+- **Nothing missing:** CI fails if the sandboxed JS uses an API without its
+  matching grant (the "empty access_globals" class of bug).
+- **Nothing extra:** CI fails if an `access_globals` key or operation is
+  granted that the JS never uses with that operation, if an `inject_script`
+  URL differs from the literal script URL in the JS or contains a wildcard,
+  if `logging` is enabled beyond `debug`, or if any permission is granted
+  that no `require()`d API needs. A merge to `main` is a Gallery release into
+  every installer's site, so a widened grant must turn CI red.
 
 **The `access_globals` key is the FULL dotted path, matched exactly.**
 GTM's runtime checker (read verbatim from a live `gtm.js`, 2026-09-28) is
@@ -91,8 +98,9 @@ History: the Gallery version `551ea056` (2026-05-15) granted nothing, and the
 2026-06-27 fix `e3c043f` granted `tapper`; both throw
 `Prohibited execute on global variable: tapper.init.` at runtime, so no
 version of this template has ever initialised the monitor. Fixed 2026-09-28
-by granting `tapper.init`; `callInWindow` binds `this` to `window.tapper`,
-which `Tapper.init` needs.
+by granting `tapper.init`. Which receiver `callInWindow` binds does not
+matter: `Tapper.init` is an arrow class field (tracker
+`packages/client/src/index.ts`), so its `this` is fixed by the language.
 
 ---
 

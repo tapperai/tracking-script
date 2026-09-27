@@ -36,7 +36,9 @@ Walk through each one before claiming done.)
   a local `___TESTS___` runner, and a CI check that the Gallery-served sha
   carries the current template. Needs: (1) the GTM editor **Tests** tab run on
   the new template; (2) a GTM Preview on a test site showing `tapper.init`
-  called; (3) the Gallery listing showing the new version (Google: 2-3 days).
+  called AND the tag status `Succeeded` (`tapper.init` is async and returns a
+  Promise; if GTM's conversion of that return value threw, the monitor would
+  still start but `gtmOnSuccess` would never be reached); (3) the Gallery listing showing the new version (Google: 2-3 days).
   Blast radius measured 2026-09-28: 0 of the live clients' public GTM
   containers install via this template (all use a Custom HTML tag), so no
   client needs to update today.

@@ -17,8 +17,14 @@
 //
 // i.e. an EXACT match on the full dotted path; a grant on `tapper` does not
 // cover `tapper.init`. callInWindow asserts ("access_globals", "execute", path)
-// before resolving the path, then calls the function with `this` bound to its
-// parent object. As in GTM, MOCKED APIs skip the permission check
+// before resolving the path. This runner then calls the function with its
+// parent object as receiver; that choice does not matter for this template,
+// because Tapper.init is an arrow class field (tracker
+// packages/client/src/index.ts, `public init = async (pk?, options?) => {`),
+// so its `this` is fixed by the language whatever the caller binds.
+// Least privilege (no grant beyond what the JS uses) is NOT checked here; it
+// is checked by scripts/validate_template.py. As in GTM, MOCKED APIs skip the
+// permission check
 // (developers.google.com/tag-platform/tag-manager/templates/tests,
 // "Limitations").
 //
@@ -33,7 +39,7 @@
 import { readFileSync } from "node:fs";
 
 const TPL = process.argv[2] || "template.tpl";
-const content = readFileSync(TPL, "utf8").replace(/^﻿/, "");
+const content = readFileSync(TPL, "utf8").replace(/^\uFEFF/, "");
 
 function sections(text) {
   const parts = text.split(/^___([A-Z_]+)___$/m);
