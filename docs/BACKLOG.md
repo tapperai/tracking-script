@@ -28,8 +28,8 @@ them. Each item should have enough context to pick up cold.)
 (Implemented somewhere in the build but the user hasn't manually seen it work.
 Walk through each one before claiming done.)
 
-- **The tag never started the monitor (issue #3; fixed, awaiting Gallery
-  pickup).** No earlier version could call
+- **The tag never started the monitor (issue #3; fixed, merged to `main`
+  2026-09-30 in PR #7, awaiting Gallery pickup).** No earlier version could call
   `callInWindow('tapper.init', pk)`: `551ea056` granted no `access_globals`
   key and `e3c043f` granted `tapper`, which does not cover `tapper.init`
   because GTM matches the full dotted path exactly. Fixed by granting execute
@@ -43,6 +43,23 @@ Walk through each one before claiming done.)
   return value threw, the monitor would still start but `gtmOnSuccess` would
   never be reached); (3) the Gallery listing showing the new version
   (Google: typically 2-3 days).
+
+  Post-merge checks (PR #7 merged 2026-09-30, Gallery-served sha
+  `295cc787192dcc3bcf2b237b2febebe62a0711a1`, the first `metadata.yaml`
+  entry):
+  - **By 2026-10-03:** open the template in the Community Template Gallery
+    and confirm the listed version is `295cc787`, the permissions show
+    `tapper.init` under "Accesses global variables" with execute, and the
+    change notes match `metadata.yaml`. If it still shows `551ea056` after
+    2026-10-05, check the Gallery's import status for the repository.
+  - **A person runs, after the Gallery shows the new version:**
+    1. In a GTM container, import or update the template, open the template
+       editor, and run the **Tests** tab: all four scenarios pass.
+    2. On a test site, add the Tapper tag with a test publishable key, start
+       GTM **Preview**, load a page, and confirm the tag status is
+       `Succeeded`, `bundle.js` loads from `monitor.tapper.ai`, and
+       `tapper.init` is called once with the key.
+  Move this item to Done only when all three hold.
 
 ---
 
