@@ -9,7 +9,7 @@
 2. Before writing code, check if a spec exists at `docs/{domain}/SPEC.md`
 3. If no spec exists, create one from `document-first-template/_templates/SPEC.md` first
 4. **After writing the spec, open the file, record the decisions it locks in (what you measured, what would have made the answer no), and implement straight away.** No confirmation wait: agents decide from evidence and record the decision in the spec.
-5. Once confirmed, implement from the spec — follow it exactly. Break the spec into independent work streams and **spawn parallel agents** (one per work stream) to maximize speed. Sequence dependent work — implement dependencies first, then parallelize everything that follows
+5. Implement from the spec and follow it exactly. Break the spec into independent work streams and **spawn parallel agents** (one per work stream) to maximize speed. Sequence dependent work — implement dependencies first, then parallelize everything that follows
 6. After implementing, update the spec to match what was built — keep specs and code in sync at all times. Mark `Implemented in:` with the current repo name. Move completed items out of Remaining Work. Mark any sections that are designed but not yet coded as `PLANNED`
 7. **For doc commands** (e.g., `Check spec drift`, full rerun, setup) — first run `git submodule update --remote document-first-template`, then read `document-first-template/PROMPT.md` and follow its instructions
 
@@ -22,3 +22,11 @@
 - Items that exist as code but the user has not yet seen working live in `## P0 — needs verification`.
 - Never silently drop a request. If you push back on scope, write the rationale inline next to the entry.
 - Treat `docs/BACKLOG.md` as authoritative when the user says "did you do X" — search there first before re-reading code or git log.
+
+## Public repo
+
+This repo is PUBLIC. Keep customer names, customer counts, rates, domains, internal table or dataset names and operator quotes out of every commit, PR, issue, comment and doc. Describe the technical change only; put the why and the evidence in a private repo (its `docs/BACKLOG.md` or a private twin PR). GitHub keeps every earlier revision of a PR, issue or comment body in its public edit history, so editing the text later does not remove it.
+
+## Deploy
+
+There is no deploy job. The GTM Community Template Gallery serves the `template.tpl` of the commit named by the FIRST `sha` in `metadata.yaml` on `main`, not `main` HEAD, and picks up a new first entry in typically 2-3 days. A merge that changes `template.tpl` reaches no customer until that commit's sha is the first `metadata.yaml` entry. GTM never auto-updates an imported template: each container that imported it has to accept the update in a workspace and publish. Merges are merge commits only (squash and rebase are disabled), so the sha `metadata.yaml` names survives the merge. To see what the Gallery serves right now, read `versions[0].sha` and `permission` from https://tagmanager.google.com/api/gallery/owners/tapperai/templates/tracking-script (the undocumented JSON behind the Gallery page; drop its first line). Details: `docs/tracking-script/ENVIRONMENT_SPINUP.md` (CI/CD).

@@ -25,7 +25,9 @@ python3 scripts/validate_template.py template.tpl
    `___WEB_PERMISSIONS___`) parses as valid JSON.
 2. Every window-access API used in the sandboxed JS (`callInWindow`,
    `copyFromWindow`, `setInWindow`, `createQueue`, `aliasInWindow`) has its
-   root identifier granted in the `access_globals` permission.
+   root identifier granted in the `access_globals` permission. This is
+   weaker than GTM, which matches the full dotted path exactly: a grant on
+   `tapper` passes this check but GTM still denies `tapper.init` (issue #3).
 3. Every `require()`'d API that needs a permission has that permission
    granted — `injectScript` → `inject_script`, `callInWindow` →
    `access_globals`, `logToConsole` → `logging`.

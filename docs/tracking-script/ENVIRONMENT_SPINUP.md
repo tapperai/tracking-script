@@ -3,7 +3,7 @@
 > **Status:** `SHIPPED`
 >
 > **Created:** 2026-08-26
-> **Last updated:** 2026-08-26
+> **Last updated:** 2026-09-29
 >
 > **Implemented in:** tracking-script
 
@@ -47,11 +47,7 @@ execution environment.
   `ubuntu-latest`.
 - Steps: checkout, then `python3 scripts/validate_template.py template.tpl`
   (pure stdlib, no network, no secrets, no npm install).
-- **The "deploy" is the push to `main` itself** — the GTM Community Template
-  Gallery reads `metadata.yaml` + `template.tpl` directly off the default
-  branch. CI does not push anywhere; it only gates what merges to `main`
-  before Google's gallery can read it. There is no separate deploy job,
-  container image, or release artifact.
+- **The "deploy" is the `versions` list in `metadata.yaml`**: the Gallery serves the `template.tpl` of the commit named by its FIRST `sha` (newest first; Google picks up a new entry in typically 2-3 days). A push to `main` that changes `template.tpl` without a new first `metadata.yaml` entry reaches no customer. Imported templates never auto-update: each container that imported the template must accept the update and publish. CI does not push anywhere; there is no deploy job, container image or release artifact.
 
 ## Cross-Repo Sync Scripts
 
@@ -74,11 +70,7 @@ database to seed.
 
 ## Teardown / Disaster Recovery
 
-Not applicable — there is no running infrastructure to tear down. Recovery
-from a bad template push is: revert the commit on `main` (the gallery
-re-reads the branch on its own schedule) and, if a broken version was
-already published to the Community Template Gallery, follow Google's
-gallery-side version-rollback process (outside this repo).
+Not applicable: there is no running infrastructure to tear down. To recover from a bad template release, revert the bad `template.tpl` change in a new commit on `main`, then in a second commit add that revert commit's full sha as a NEW first `metadata.yaml` `versions` entry, keeping the bad version listed below it (Google: every published version stays listed, newest first), and merge with a merge commit. The Gallery picks it up in typically 2-3 days; every container that already accepted the bad version must accept the new one and publish. To withdraw the template from the Gallery instead, delete `metadata.yaml` or `LICENSE` (Google's documented removal path).
 
 ## Verification
 

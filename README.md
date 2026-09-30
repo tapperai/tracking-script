@@ -1,11 +1,11 @@
-# Tapper Ad Fraud Protection — GTM Template
+# Tapper - Monitoring Script (GTM template)
 
-Protect your Google Ads, Meta Ads, and TikTok Ads campaigns from invalid clicks and ad fraud using [Tapper](https://tapper.ai).
+Monitor your Google Ads, Meta Ads, and TikTok Ads traffic for invalid clicks using [Tapper](https://tapper.ai).
 
 ## Setup
 
 1. Import this template into your GTM workspace via the **Community Template Gallery**.
-2. Create a new tag using the **Tapper Ad Fraud Protection** template.
+2. Create a new tag using the **Tapper - Monitoring Script** template.
 3. Enter your **Public Key** from the [Tapper dashboard](https://tapper.ai) (Settings → Public Key).
 4. Set the trigger to **All Pages**.
 5. Publish your container.
