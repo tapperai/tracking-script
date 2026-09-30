@@ -10,7 +10,7 @@
 
 | Domain | Status | Description |
 |--------|--------|-------------|
-| [tracking-script](tracking-script/SPEC.md) | `SHIPPED` | Single-file GTM Community Template that injects `monitor.tapper.ai/bundle.js` and calls `tapper.init(pk)`. Known defect (issue #3): the tag never starts the monitor. The version the Gallery serves (`551ea056`) grants no `access_globals` key, and `main` grants the key `tapper`, but GTM matches the key exactly and `callInWindow('tapper.init', pk)` needs execute on `tapper.init`, so GTM denies the call in both. Remove this note once the Gallery listing serves a sha that grants `tapper.init`. |
+| [tracking-script](tracking-script/SPEC.md) | `SHIPPED` | Single-file GTM Community Template that injects `monitor.tapper.ai/bundle.js` and calls `tapper.init(pk)`. It grants `access_globals` execute on the exact key `tapper.init` (GTM matches the full dotted path; earlier versions granted nothing or `tapper`, so the tag never started the monitor, issue #3). |
 
 See also [`tracking-script/TESTING.md`](tracking-script/TESTING.md) and
 [`tracking-script/ENVIRONMENT_SPINUP.md`](tracking-script/ENVIRONMENT_SPINUP.md).
