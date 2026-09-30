@@ -16,7 +16,8 @@ Runs automatically on every push/PR to `main` via
 dependencies beyond `python3` stdlib:
 
 ```bash
-python3 scripts/validate_template.py template.tpl
+python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
+node scripts/run_template_tests.mjs template.tpl
 ```
 
 **What it checks:**
@@ -25,12 +26,24 @@ python3 scripts/validate_template.py template.tpl
    `___WEB_PERMISSIONS___`) parses as valid JSON.
 2. Every window-access API used in the sandboxed JS (`callInWindow`,
    `copyFromWindow`, `setInWindow`, `createQueue`, `aliasInWindow`) has its
-   root identifier granted in the `access_globals` permission. This is
-   weaker than GTM, which matches the full dotted path exactly: a grant on
-   `tapper` passes this check but GTM still denies `tapper.init` (issue #3).
+   FULL dotted path granted in `access_globals` with the operation it needs
+   (execute / read / write / read+write). GTM matches the full path exactly,
+   so a root-only grant (`tapper` for `tapper.init`) is a failure. Earlier
+   versions of this check compared only the root and passed a template that
+   could never call `tapper.init` (issue #3). Comments (`//` and `/* */`) are
+   stripped from the sandboxed JS before this and every later scan.
 3. Every `require()`'d API that needs a permission has that permission
    granted — `injectScript` → `inject_script`, `callInWindow` →
    `access_globals`, `logToConsole` → `logging`.
+4. `___INFO___.categories` holds 1-3 Gallery categories.
+5. Least privilege: no `access_globals` key or operation beyond the literal
+   paths the JS uses with it, `inject_script` URLs equal to the literal
+   script URL in the JS (no wildcards), `logging` on `debug` only, and no
+   permission that no `require()`d API needs. (The `___TESTS___` runner does
+   not check this; only the validator does.) A path or URL that appears only
+   in a comment neither satisfies a grant nor justifies one.
+6. (`--metadata`) the first `sha` in `metadata.yaml` (the version the Gallery
+   serves) is an ancestor of HEAD and carries this exact `template.tpl`.
 
 Exits non-zero on any failure — this is the check that would have caught an
 empty/missing `access_globals` grant before Google's Community Template
@@ -38,27 +51,26 @@ Gallery picked up the commit (that class of bug is why the script exists).
 
 ---
 
-## 2. Built-in GTM test scenario (`___TESTS___` section of `template.tpl`)
+## 2. GTM test scenarios (`___TESTS___` section of `template.tpl`)
 
-`template.tpl` carries one GTM sandboxed-JS test scenario, run from inside
-GTM's own template editor ("Testing" tab, not from this repo's CI):
+`template.tpl` carries four scenarios: happy path (bundle injected, then
+`tapper.init` called with the key, `gtmOnSuccess`), the permission scenario
+(`callInWindow` left UNMOCKED, because GTM skips permission checks only for
+mocked APIs, so a missing or wrong-key grant throws
+`Prohibited execute on global variable: tapper.init.`), bundle-load failure,
+and missing key.
 
-```js
-const mockData = {
-  pk: 'pk_test_123456789',
-  gtmOnSuccess: () => {},
-  gtmOnFailure: () => fail('gtmOnFailure should not be called')
-};
+Run them two ways:
 
-runCode(mockData);
-assertApi('gtmOnSuccess').wasCalled();
-```
-
-To run it: open the template in GTM's template editor (import
-`template.tpl` into a workspace, or paste it into gallery.google.com's
-template preview), go to the **Testing** tab, and run the scenario. It
-asserts the happy path — a valid `pk` leads to `gtmOnSuccess()` being
-called and `gtmOnFailure()` never being called.
+- **CI / locally:** `node scripts/run_template_tests.mjs template.tpl`. The
+  runner emulates the three APIs the template uses with GTM's exact-path
+  permission check. Run against the Gallery version `551ea056` or the
+  pre-fix `main` it fails the permission scenario; against the fix it passes
+  4/4.
+- **In GTM itself:** import `template.tpl` into a workspace (Templates → New
+  → Import), open the **Tests** tab, click **Run tests**. This is the
+  authoritative harness; the local runner exists because GTM's cannot run in
+  CI.
 
 ---
 

@@ -80,21 +80,34 @@ Not applicable — this repo has no database. The only "schema" is the
 | Permission | Grant |
 |---|---|
 | `logging` | `environments: debug` |
-| `access_globals` | key `tapper`, read=false, write=false, execute=true |
+| `access_globals` | key `tapper.init`, read=false, write=false, execute=true |
 | `inject_script` | urls: `https://monitor.tapper.ai/bundle.js` |
 
-**Known defect (issue #3): the `access_globals` grant does not match what
-the sandboxed JS needs, so the tag never starts the monitor.** GTM's
-`access_globals` checker matches the granted key exactly (`indexOf` on the
-granted key list; a failed check throws `Prohibited execute on global
-variable: <key>.`), and `callInWindow('tapper.init', pk)` needs execute on
-`tapper.init`. The grant on `main` is on `tapper`, which does not cover it,
-and the version the Gallery serves (`551ea056`) grants no `access_globals`
-key at all. `scripts/validate_template.py` does not catch this: it checks
-only the ROOT identifier of each window path (`tapper`). The fix (grant
-`tapper.init`, check the full path in CI, add a new first `metadata.yaml`
-entry) is pending on branch `fix/gtm-template-grant-tapper-init`; this
-section is rewritten when it lands.
+These three grants are exactly what the sandboxed JS needs and nothing more,
+and `scripts/validate_template.py` enforces both directions in CI:
+
+- **Nothing missing:** CI fails if the sandboxed JS uses an API without its
+  matching grant (the "empty access_globals" class of bug).
+- **Nothing extra:** CI fails if an `access_globals` key or operation is
+  granted that the JS never uses with that operation, if an `inject_script`
+  URL differs from the literal script URL in the JS or contains a wildcard,
+  if `logging` is enabled beyond `debug`, or if any permission is granted
+  that no `require()`d API needs. A merge to `main` is a Gallery release into
+  every installer's site, so a widened grant must turn CI red. Comments are
+  stripped from the sandboxed JS before these scans, so a commented-out call
+  can neither satisfy nor widen a grant.
+
+**The `access_globals` key is the FULL dotted path, matched exactly.**
+GTM's runtime checker (read from a live `gtm.js`) is
+`executeKeys.indexOf(path) > -1`, and `callInWindow('tapper.init', pk)`
+asserts `execute` on `'tapper.init'`; a failed check throws
+`Prohibited execute on global variable: tapper.init.`. A grant on `tapper`
+does not cover it. History: the Gallery version `551ea056` granted no
+`access_globals` key, and `e3c043f` granted `tapper`; neither could call
+`tapper.init`, so no earlier version of this template initialised the
+monitor. Fixed by granting `tapper.init` (issue #3). Which receiver
+`callInWindow` binds does not matter: the bundle defines `Tapper.init` as an
+arrow-function class field, so its `this` is fixed by the language.
 
 ---
 
@@ -128,27 +141,37 @@ Not applicable — no message broker.
    own editor UI can export a `.tpl` too, in which case reconcile the export
    back into this file rather than replacing it wholesale, since this file
    also carries the CI-relevant sections).
-2. Bump `___INFO___.version` if the parameter/permission shape changed.
-3. In a second commit on the same branch, add the template commit's full SHA
-   as the FIRST entry of `metadata.yaml`'s `versions:` list with change
-   notes, keeping every earlier entry below it. The Gallery serves only the
-   first entry, so a template change that never reaches `metadata.yaml`
-   never reaches customers.
-4. Open a PR to `main` — `.github/workflows/validate.yml` runs
-   `scripts/validate_template.py template.tpl` on push and PR against `main`
-   and fails the check if any `___..._` JSON section doesn't parse, or if
-   the sandboxed JS calls a `require()`'d API (`injectScript`,
-   `callInWindow`, `copyFromWindow`, `setInWindow`, `createQueue`,
-   `aliasInWindow`, `logToConsole`) whose matching permission isn't granted
-   in `___WEB_PERMISSIONS___`.
-5. Merge to `main` with a merge commit (squash and rebase are disabled on
-   this repo; both would rewrite the SHA that `metadata.yaml` names). The
-   merge is the release only because it moves the first `metadata.yaml`
-   entry; the Gallery picks it up in typically 2-3 days. There is no separate
-   deploy step to run.
-6. Customers do not get the new version automatically: each GTM workspace
-   that imported the template shows an update notice, and someone with edit
-   access must accept it, review any permission change and publish.
+2. Leave `___INFO___.version` at `1`: it is GTM's export-format version, not
+   a release counter (Google's own gallery templates all carry `1`).
+3. On the SAME branch, in a SECOND commit, add the template commit's full SHA
+   as the FIRST entry of `metadata.yaml`'s `versions:` list with change notes,
+   keeping every earlier entry below it. The Gallery serves only the first
+   entry, so a template change that never reaches `metadata.yaml` never
+   reaches customers. CI enforces it: `validate_template.py --metadata
+   metadata.yaml` fails unless the served sha is an ancestor of HEAD and
+   carries a byte-identical `template.tpl`.
+4. Open a PR to `main`. `.github/workflows/validate.yml` runs on push and
+   PR against `main`:
+   - `python3 scripts/validate_template.py template.tpl --metadata
+     metadata.yaml` fails the check if any `___..._` JSON section doesn't
+     parse, if the sandboxed JS calls a `require()`'d API (`injectScript`,
+     `callInWindow`, `copyFromWindow`, `setInWindow`, `createQueue`,
+     `aliasInWindow`, `logToConsole`) whose matching permission isn't granted
+     (full dotted path for window access), if any grant is wider than what
+     the JS uses (the least-privilege checks), or if the first
+     `metadata.yaml` sha does not carry this `template.tpl`.
+   - `node scripts/run_template_tests.mjs template.tpl` runs the
+     `___TESTS___` scenarios with GTM's exact-path permission semantics.
+5. Merge to `main` with a **merge commit** (squash and rebase are disabled
+   on this repo; both would rewrite the SHA that `metadata.yaml` names, and
+   the post-merge CI run would go red). The Community Template Gallery reads
+   `metadata.yaml` on the default branch, so the merge **is** the release;
+   Google documents pickup as typically 2-3 days. There is no separate deploy
+   step to run.
+6. Customers do NOT get the new version automatically. GTM shows an
+   "update available" notice on the template in each workspace that imported
+   it from the Gallery; someone with edit access must accept it, review any
+   permission change, then publish the container.
 
 ---
 
@@ -184,11 +207,17 @@ See [`TESTING.md`](TESTING.md).
   `versions` ledger the Community Template Gallery reads to know which
   commit SHA corresponds to which released version.
 - `scripts/validate_template.py` -- stdlib-only pre-deploy gate: parses each
-  JSON section of `template.tpl` and checks every `require()`'d API used in
-  the sandboxed JS has its permission granted in `___WEB_PERMISSIONS___`.
-- `.github/workflows/validate.yml` -- runs `validate_template.py` on every
-  push/PR to `main`, so no template change reaches `main` (where
-  `metadata.yaml` can name it for the Gallery) without passing it.
+  JSON section of `template.tpl`, checks every `require()`'d API used in the
+  sandboxed JS has its permission granted in `___WEB_PERMISSIONS___`, checks
+  every window path is granted exactly (full dotted path + operation) and
+  nothing beyond what the JS uses, checks Gallery categories, and with
+  `--metadata` checks the Gallery-served sha.
+- `scripts/run_template_tests.mjs` -- dependency-free Node runner for the
+  `___TESTS___` scenarios with GTM's exact-path permission semantics (GTM
+  itself only runs them inside its web editor).
+- `.github/workflows/validate.yml` -- runs `validate_template.py --metadata`
+  and `run_template_tests.mjs` on every push/PR to `main`, since
+  merge-to-main is the actual release for this repo.
 - `README.md` -- customer-facing setup instructions (import → create tag →
   enter Public Key → trigger → publish).
 
@@ -196,7 +225,8 @@ See [`TESTING.md`](TESTING.md).
 
 ## Remaining Work
 
-- Fix the `access_globals` grant (issue #3, see Web Permissions above): grant
-  execute on `tapper.init`, make `validate_template.py` check the full dotted
-  path, add the fixed commit as the first `metadata.yaml` entry, then confirm
-  the Gallery listing serves it and run one GTM Preview on a test site.
+- Run the four `___TESTS___` scenarios in GTM's own editor and one GTM
+  Preview on a test site with the fixed template (the local runner emulates
+  GTM; it is not GTM): `tapper.init` called and the tag status `Succeeded`.
+- Confirm the Gallery listing serves the new sha (Google: typically 2-3 days
+  after `metadata.yaml` lands on `main`).

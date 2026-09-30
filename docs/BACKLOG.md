@@ -21,21 +21,28 @@ Categories:
 (Explicitly asked, not shipped yet. Add new items here as the user mentions
 them. Each item should have enough context to pick up cold.)
 
-- **The tag never starts the monitor (issue #3).** GTM matches the
-  `access_globals` key exactly and `callInWindow('tapper.init', pk)` needs
-  execute on `tapper.init`; `main` grants `tapper` and the Gallery-served
-  `551ea056` grants nothing. Fix pending on branch
-  `fix/gtm-template-grant-tapper-init`: grant `tapper.init`, check full paths
-  in `validate_template.py`, add the fixed commit as the first
-  `metadata.yaml` entry. Done when the Gallery listing
-  (`versions[0].sha`) serves it and a GTM Preview shows `tapper.init` called.
-
 ---
 
 ## P0 — needs verification
 
 (Implemented somewhere in the build but the user hasn't manually seen it work.
 Walk through each one before claiming done.)
+
+- **The tag never started the monitor (issue #3; fixed, awaiting Gallery
+  pickup).** No earlier version could call
+  `callInWindow('tapper.init', pk)`: `551ea056` granted no `access_globals`
+  key and `e3c043f` granted `tapper`, which does not cover `tapper.init`
+  because GTM matches the full dotted path exactly. Fixed by granting execute
+  on `tapper.init` and listing the fixed commit as the first `metadata.yaml`
+  entry, with Gallery categories, exact-path and least-privilege checks in
+  `validate_template.py`, a local `___TESTS___` runner, and a CI check that
+  the Gallery-served sha carries the current template. Needs: (1) the GTM
+  editor **Tests** tab run on the new template; (2) a GTM Preview on a test
+  site showing `tapper.init` called AND the tag status `Succeeded`
+  (`tapper.init` is async and returns a Promise; if GTM's conversion of that
+  return value threw, the monitor would still start but `gtmOnSuccess` would
+  never be reached); (3) the Gallery listing showing the new version
+  (Google: typically 2-3 days).
 
 ---
 

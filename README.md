@@ -18,3 +18,7 @@ Monitor your Google Ads, Meta Ads, and TikTok Ads traffic for invalid clicks usi
 ## What it does
 
 Loads the Tapper monitoring script and initialises it with your Public Key. Tapper detects invalid traffic patterns and automatically protects your ad campaigns.
+
+## Updating
+
+Earlier versions of this template loaded the script but were not permitted to start it, so monitoring never began. To check yours, open **Templates** in your GTM workspace and view the Tapper template's permissions: if they do not list `tapper.init` under **Accesses global variables**, accept the update offered on the template, then publish your container.
