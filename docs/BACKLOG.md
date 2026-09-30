@@ -21,6 +21,15 @@ Categories:
 (Explicitly asked, not shipped yet. Add new items here as the user mentions
 them. Each item should have enough context to pick up cold.)
 
+- **The tag never starts the monitor (issue #3).** GTM matches the
+  `access_globals` key exactly and `callInWindow('tapper.init', pk)` needs
+  execute on `tapper.init`; `main` grants `tapper` and the Gallery-served
+  `551ea056` grants nothing. Fix pending on branch
+  `fix/gtm-template-grant-tapper-init`: grant `tapper.init`, check full paths
+  in `validate_template.py`, add the fixed commit as the first
+  `metadata.yaml` entry. Done when the Gallery listing
+  (`versions[0].sha`) serves it and a GTM Preview shows `tapper.init` called.
+
 ---
 
 ## P0 — needs verification
