@@ -27,6 +27,15 @@
 
 This repo is PUBLIC. Keep customer names, customer counts, rates, domains, internal table or dataset names and operator quotes out of every commit, PR, issue, comment and doc. Describe the technical change only; put the why and the evidence in a private repo (its `docs/BACKLOG.md` or a private twin PR). GitHub keeps every earlier revision of a PR, issue or comment body in its public edit history, so editing the text later does not remove it.
 
+## What this repo is and its gate
+
+A single GTM Community Template, `template.tpl`: it injects `https://monitor.tapper.ai/bundle.js` and calls `tapper.init(pk)`, with `access_globals` execute granted on the exact key `tapper.init`. No build, no package.json. Run the CI gate locally from the repo root before marking a PR ready (stdlib Python and Node only; the `--metadata` check needs full git history):
+
+```
+python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
+node scripts/run_template_tests.mjs template.tpl
+```
+
 ## Deploy
 
 There is no deploy job. The GTM Community Template Gallery serves the `template.tpl` of the commit named by the FIRST `sha` in `metadata.yaml` on `main`, not `main` HEAD, and picks up a new first entry in typically 2-3 days. A merge that changes `template.tpl` reaches no customer until that commit's sha is the first `metadata.yaml` entry. GTM never auto-updates an imported template: each container that imported it has to accept the update in a workspace and publish. Merges are merge commits only (squash and rebase are disabled), so the sha `metadata.yaml` names survives the merge. Merges go through the merge queue (ruleset `merge-queue-main`, id 25056866, created 2026-10-14; `gh pr merge <n> --merge` enqueues): the required check `Validate template.tpl (pre-deploy gate)` (classic branch protection, admins included) runs on the ready PR and again on the queue's merge commit, drafts run nothing, and there is no push run. To see what the Gallery serves right now, read `versions[0].sha` and `permission` from https://tagmanager.google.com/api/gallery/owners/tapperai/templates/tracking-script (the undocumented JSON behind the Gallery page; drop its first line). Details: `docs/tracking-script/ENVIRONMENT_SPINUP.md` (CI/CD).
