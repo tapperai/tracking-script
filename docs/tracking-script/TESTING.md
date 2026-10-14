@@ -11,7 +11,7 @@ inside a customer's GTM sandbox.
 
 ## 1. CI validation gate (`scripts/validate_template.py`)
 
-Runs automatically on every push/PR to `main` via
+Runs automatically on every ready PR to `main` and in the merge queue via
 `.github/workflows/validate.yml`, and can be run locally with no
 dependencies beyond `python3` stdlib:
 

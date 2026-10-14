@@ -57,7 +57,8 @@ release is a merge that adds a new first `versions` entry, and a merge that
 changes `template.tpl` without one reaches no customer. Imported templates
 never auto-update; each GTM container that imported the template has to
 accept the update and publish. `.github/workflows/validate.yml` gates every
-push and PR against `main` with `scripts/validate_template.py`.
+ready PR and every merge-queue group against `main` with
+`scripts/validate_template.py`.
 
 ---
 
@@ -150,8 +151,9 @@ Not applicable — no message broker.
    reaches customers. CI enforces it: `validate_template.py --metadata
    metadata.yaml` fails unless the served sha is an ancestor of HEAD and
    carries a byte-identical `template.tpl`.
-4. Open a PR to `main`. `.github/workflows/validate.yml` runs on push and
-   PR against `main`:
+4. Open a PR to `main` and mark it ready (a draft runs nothing).
+   `.github/workflows/validate.yml` runs on the PR and again on the merge
+   queue's merge commit:
    - `python3 scripts/validate_template.py template.tpl --metadata
      metadata.yaml` fails the check if any `___..._` JSON section doesn't
      parse, if the sandboxed JS calls a `require()`'d API (`injectScript`,
@@ -162,9 +164,10 @@ Not applicable — no message broker.
      `metadata.yaml` sha does not carry this `template.tpl`.
    - `node scripts/run_template_tests.mjs template.tpl` runs the
      `___TESTS___` scenarios with GTM's exact-path permission semantics.
-5. Merge to `main` with a **merge commit** (squash and rebase are disabled
-   on this repo; both would rewrite the SHA that `metadata.yaml` names, and
-   the post-merge CI run would go red). The Community Template Gallery reads
+5. Merge to `main` through the merge queue (`gh pr merge <n> --merge`
+   enqueues it), which lands a **merge commit** (squash and rebase are
+   disabled on this repo; both would rewrite the SHA that `metadata.yaml`
+   names, and the queue run would go red). The Community Template Gallery reads
    `metadata.yaml` on the default branch, so the merge **is** the release;
    Google documents pickup as typically 2-3 days. There is no separate deploy
    step to run.
@@ -216,7 +219,7 @@ See [`TESTING.md`](TESTING.md).
   `___TESTS___` scenarios with GTM's exact-path permission semantics (GTM
   itself only runs them inside its web editor).
 - `.github/workflows/validate.yml` -- runs `validate_template.py --metadata`
-  and `run_template_tests.mjs` on every push/PR to `main`, since
+  and `run_template_tests.mjs` on every ready PR and merge-queue group for `main`, since
   merge-to-main is the actual release for this repo.
 - `README.md` -- customer-facing setup instructions (import → create tag →
   enter Public Key → trigger → publish).

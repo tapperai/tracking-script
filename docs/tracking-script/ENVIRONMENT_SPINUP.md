@@ -42,11 +42,21 @@ execution environment.
 
 ## CI/CD
 
-- Trigger: push or PR to `main`.
+- Trigger: a ready PR to `main` (`opened`, `synchronize`, `reopened`,
+  `ready_for_review`) and the merge queue (`merge_group`). Draft PRs run
+  nothing: the job is skipped and the required check reports as passing.
+  There is no push run: `main` takes changes only through the merge queue
+  (ruleset `merge-queue-main`: merge commits, groups of up to 5, ALLGREEN,
+  org admins may bypass), and the queue run already validated the exact
+  merge commit that lands.
+- Required check (classic branch protection on `main`, admins included):
+  `Validate template.tpl (pre-deploy gate)`, the job name. Never rename it.
 - Runner: `.github/workflows/validate.yml`, GitHub Actions
-  `ubuntu-latest`.
-- Steps: checkout, then `python3 scripts/validate_template.py template.tpl`
-  (pure stdlib, no network, no secrets, no npm install).
+  `ubuntu-24.04-arm`, 5-minute timeout; a newer push to a PR cancels the
+  older PR run.
+- Steps: checkout, then `python3 scripts/validate_template.py template.tpl
+  --metadata metadata.yaml` and `node scripts/run_template_tests.mjs
+  template.tpl` (pure stdlib, no network, no secrets, no npm install).
 - **The "deploy" is the `versions` list in `metadata.yaml`**: the Gallery serves the `template.tpl` of the commit named by its FIRST `sha` (newest first; Google picks up a new entry in typically 2-3 days). A push to `main` that changes `template.tpl` without a new first `metadata.yaml` entry reaches no customer. Imported templates never auto-update: each container that imported the template must accept the update and publish. CI does not push anywhere; there is no deploy job, container image or release artifact.
 
 ## Cross-Repo Sync Scripts
