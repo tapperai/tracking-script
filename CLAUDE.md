@@ -2,6 +2,8 @@
 
 **Every new feature or significant change must have a spec in `docs/` before implementation begins.** Skip steps 1-5 only if the user explicitly asks to write code directly (e.g., "just fix this", "skip the spec").
 
+**Docs here:** decisions in `docs/decisions/NNNN-title.md` (short, frozen, a newer record supersedes an old one); how each area works now in `docs/<area>.md` (one page per area, about 300 lines, updated by the PR that changes the area). The rule is the `docs-rule` skill in loop.
+
 1. **Before implementing any feature or significant change**, read the rules:
    - Read `docs/DOCUMENT_FIRST.md` for spec rules, structure, and conventions
 2. Before writing code, check if a spec exists at `docs/{domain}/SPEC.md`
