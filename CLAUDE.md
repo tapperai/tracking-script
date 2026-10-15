@@ -2,16 +2,14 @@
 
 **Every new feature or significant change must have a spec in `docs/` before implementation begins.** Skip steps 1-5 only if the user explicitly asks to write code directly (e.g., "just fix this", "skip the spec").
 
-1. **Before implementing any feature or significant change**, pull the latest template:
-   - Run `git submodule update --remote document-first-template`
-   - Read `document-first-template/DOCUMENT_FIRST.md` for spec rules, structure, and conventions
-   - Run `git diff document-first-template` — if there is output, the template has new changes: read `document-first-template/PROMPT.md` and execute Phase 1 (sync infrastructure) + Phase 3 (enforce updated rules on all existing specs) before continuing
+1. **Before implementing any feature or significant change**, read the rules:
+   - Read `docs/DOCUMENT_FIRST.md` for spec rules, structure, and conventions
 2. Before writing code, check if a spec exists at `docs/{domain}/SPEC.md`
-3. If no spec exists, create one from `document-first-template/_templates/SPEC.md` first
+3. If no spec exists, create one from `docs/_templates/SPEC.md` first
 4. **After writing the spec, open the file, record the decisions it locks in (what you measured, what would have made the answer no), and implement straight away.** No confirmation wait: agents decide from evidence and record the decision in the spec.
 5. Implement from the spec and follow it exactly. Break the spec into independent work streams and **spawn parallel agents** (one per work stream) to maximize speed. Sequence dependent work — implement dependencies first, then parallelize everything that follows
 6. After implementing, update the spec to match what was built — keep specs and code in sync at all times. Mark `Implemented in:` with the current repo name. Move completed items out of Remaining Work. Mark any sections that are designed but not yet coded as `PLANNED`
-7. **For doc commands** (e.g., `Check spec drift`, full rerun, setup) — first run `git submodule update --remote document-first-template`, then read `document-first-template/PROMPT.md` and follow its instructions
+7. **For doc commands** (e.g., `Check spec drift`, full rerun, setup) — read `docs/DOCUMENT_FIRST.md` and follow its rules
 
 ## Backlog Discipline
 
