@@ -62,6 +62,17 @@ if bash -c "$CMD"; then
   exit 0
 fi
 
+# Does the GOOD end pass? If it fails too, the failure predates this batch: naming the first merge of the range would
+# blame an innocent change. Say so and stop.
+git checkout --quiet --detach "$GOOD"
+if ! bash -c "$CMD"; then
+  say "BISECT: the failure is already present at the good end ${GOOD:0:12} (PRE_EXISTING): it predates this batch."
+  result PRE_EXISTING "" "" "" "$skipped" "BISECT_CMD fails at the good end too"
+  git checkout --quiet --detach "$BAD"
+  exit 0
+fi
+git checkout --quiet --detach "$BAD"
+
 git bisect start --first-parent "$BAD" "$GOOD" >/dev/null
 git bisect run bash -c "$CMD" > "$LOG" 2>&1
 culprit="$(sed -n 's/^\([0-9a-f]\{40\}\) is the first bad commit$/\1/p' "$LOG" | head -1)"
