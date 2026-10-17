@@ -25,6 +25,8 @@ them. Each item should have enough context to pick up cold.)
 
 ## P0 — needs verification
 
+- **2026-10-17: CI standard (no test gate on merges) live.** `tests.yml` holds the test set (mode `CI_GATE_MODE`, NONE today), ruleset `required-checks` (id 25124315) requires `CI gate`, `test-batch.yml` runs it every 10 merges, nightly and on demand and bisects a red batch. Verify: the first batch or nightly run on each branch is green.
+
 (Implemented somewhere in the build but the user hasn't manually seen it work.
 Walk through each one before claiming done.)
 
