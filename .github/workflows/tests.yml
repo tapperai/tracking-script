@@ -84,7 +84,7 @@ jobs:
   gate:
     name: CI gate
     needs: [validate-template]
-    if: ${{ always() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || github.head_ref == 'promote/dev-to-master' && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || github.head_ref == 'promote/dev-to-master' && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
