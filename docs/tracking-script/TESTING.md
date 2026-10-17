@@ -11,8 +11,8 @@ inside a customer's GTM sandbox.
 
 ## 1. CI validation gate (`scripts/validate_template.py`)
 
-Runs automatically on every ready PR to `main` and in the merge queue via
-`.github/workflows/validate.yml`, and can be run locally with no
+Runs automatically on every ready PR to `main` (in every gate mode) and in the test batch via
+`.github/workflows/tests.yml`, and can be run locally with no
 dependencies beyond `python3` stdlib:
 
 ```bash

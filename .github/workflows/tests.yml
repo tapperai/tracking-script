@@ -1,0 +1,112 @@
+# tests.yml: THE WHOLE TEST SET, IN ONE WORKFLOW (CI standard 2026-10-17).
+#
+# This repo has no build/deploy job of its own: the GTM Community Template Gallery reads metadata.yaml on the default
+# branch and serves the template.tpl of the commit named by its FIRST versions sha (not the branch HEAD).
+#
+# THE PRE-DEPLOY CHECK STAYS A HARD STOP. `Validate template.tpl (pre-deploy gate)` runs on every ready PR in every
+# gate mode and is a required context next to `CI gate` (ruleset `required-checks`): it takes about 10 seconds (one
+# billed minute) and stops a broken template, a missing permission grant or a bad Gallery sha before it lands on the
+# branch Google reads. It runs only env-independent checks (python3 stdlib and node, no network, no secrets, no npm
+# install): every JSON section parses, every global / permission the sandboxed JS uses is granted with the FULL dotted
+# path, the version the Gallery serves (first sha in metadata.yaml) is this template, and the template's own
+# ___TESTS___ scenarios pass.
+#
+# Everything else follows the gate mode, the Actions variable CI_GATE_MODE (org-wide, NONE today; a repo variable of
+# the same name overrides it). The effective mode of a run (MODE):
+#   a dispatch                       -> inputs.mode (default FULL)
+#   label `ci:skip-tests`            -> NONE      label `ci:run-tests` -> FULL
+#   a draft                          -> NONE      otherwise            -> CI_GATE_MODE
+# Under NONE `CI gate` is skipped, which GitHub counts as passing. There is no other suite here: the validation IS the
+# test set, so TYPECHECK, AFFECTED and FULL only add `CI gate` over it. The test batch (test-batch.yml: every
+# CI_BATCH_SIZE merges, nightly, on demand) runs it on main and bisects a red run to the guilty merge.
+#
+# COST: 1 billed minute per ready PR (arm64, $0.005); a batch run 1 minute.
+name: Tests
+run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.reason || github.event_name }})"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      sha: { description: "Commit to test (default: the branch head)", required: false, default: "" }
+      reason: { description: "batch | nightly | requested | on-demand", required: false, default: "on-demand" }
+      mode: { description: "TYPECHECK | AFFECTED | FULL", required: false, default: "FULL", type: choice, options: [FULL, AFFECTED, TYPECHECK] }
+
+# Least privilege: these jobs only read the repo. main is the Gallery release channel, so the job token must never be
+# able to write to it.
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.sha || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate-template:
+    # The job name IS a required context (ruleset `required-checks`): never rename it.
+    name: Validate template.tpl (pre-deploy gate)
+    if: ${{ !github.event.pull_request.draft }}
+    # python3 (stdlib) and node come with the ARM image; nothing is installed.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.sha || '' }}
+          # Do not store the job token in .git/config: later steps run template and test code, which must not be able
+          # to reuse it.
+          persist-credentials: false
+          # Full history: --metadata resolves every sha in metadata.yaml and checks the Gallery-served one is an
+          # ancestor of HEAD.
+          fetch-depth: 0
+      - name: Validate template structure, exact permission grants and the Gallery-served sha
+        run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
+      - name: Run the ___TESTS___ scenarios (GTM permission semantics)
+        run: node scripts/run_template_tests.mjs template.tpl
+
+  # THE GATE-MODE CONTEXT (ruleset `required-checks`, main), required beside the pre-deploy check. Skipped under NONE,
+  # which GitHub counts as passing. Never rename it, never paths-ignore this workflow.
+  gate:
+    name: CI gate
+    needs: [validate-template]
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || github.head_ref == 'promote/dev-to-master' && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 2
+    steps:
+      - run: |
+          echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")'
+
+  # A red batch or nightly run names the guilty merge (.github/scripts/ci/batch-bisect.sh), re-running the validation
+  # at each step.
+  bisect:
+    name: Bisect the batch
+    needs: [validate-template]
+    if: ${{ failure() && github.event_name == 'workflow_dispatch' && (inputs.reason == 'batch' || inputs.reason == 'nightly') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bisect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+          BAD: ${{ inputs.sha || github.sha }}
+          CI_BATCH_SIZE: ${{ vars.CI_BATCH_SIZE || '10' }}
+          BISECT_CMD: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml && node scripts/run_template_tests.mjs template.tpl
+        run: bash .github/scripts/ci/batch-bisect.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: bisect-result
+          path: bisect-result.json
+          if-no-files-found: ignore

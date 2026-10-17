@@ -31,8 +31,8 @@ comes from the access_globals defect fixed in tracking-script#7.
 
 ## Skip
 
-- `Validate template.tpl (pre-deploy gate)` (`.github/workflows/validate.yml`) runs the validator and
-  the test runner and is required; do not restate its output.
+- `Validate template.tpl (pre-deploy gate)` (`.github/workflows/tests.yml`) runs the validator and
+  the test runner on every ready PR and is required; do not restate its output.
 - Gallery category choices, README wording.
 
 ## Checks worth running
