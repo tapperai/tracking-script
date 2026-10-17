@@ -1,0 +1,44 @@
+# Test batch trigger (CI standard 2026-10-17; root CLAUDE.md "GitHub Actions cost" rule 7).
+#
+# Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts the full set
+# (tests.yml) every CI_BATCH_SIZE merges (org variable, default 10) on each long-lived branch, nightly for any branch
+# head not yet tested, and at once for a merge labelled `ci:run-tests` or a commit with the trailer `Tests: run`.
+# Logic and the skip record: .github/scripts/ci/batch-trigger.sh.
+#
+# COST: one ubuntu-24.04-arm job of ~15 s per push to a long-lived branch (1 billed minute, $0.005) plus one a night.
+name: Test batch trigger
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: test-batch-trigger-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  count:
+    name: Count merges since the last test batch
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: .github/scripts/ci
+          persist-credentials: false
+      - name: Count, record skips, dispatch tests.yml when due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_BATCH_SIZE: ${{ vars.CI_BATCH_SIZE || '10' }}
+          TESTS_WORKFLOW: tests.yml
+        run: bash .github/scripts/ci/batch-trigger.sh

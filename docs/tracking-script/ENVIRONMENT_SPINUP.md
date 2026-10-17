@@ -42,16 +42,18 @@ execution environment.
 
 ## CI/CD
 
-- Trigger: a ready PR to `main` (`opened`, `synchronize`, `reopened`,
-  `ready_for_review`) and the merge queue (`merge_group`). Draft PRs run
-  nothing: the job is skipped and the required check reports as passing.
-  There is no push run: `main` takes changes only through the merge queue
-  (ruleset `merge-queue-main`: merge commits, groups of up to 5, ALLGREEN,
-  org admins may bypass), and the queue run already validated the exact
-  merge commit that lands.
-- Required check (classic branch protection on `main`, admins included):
-  `Validate template.tpl (pre-deploy gate)`, the job name. Never rename it.
-- Runner: `.github/workflows/validate.yml`, GitHub Actions
+- Trigger (CI standard 2026-10-17): a ready PR to `main` (`opened`,
+  `synchronize`, `reopened`, `ready_for_review`, label changes) and the test
+  batch (`test-batch.yml`: every `CI_BATCH_SIZE` merges, nightly, on demand;
+  a red batch is bisected to the guilty merge). Draft PRs run nothing. There
+  is no merge queue and no push run.
+- Required checks (ruleset `required-checks` on `main`):
+  `Validate template.tpl (pre-deploy gate)`, the job name, which runs on every
+  ready PR in every gate mode (about 10 seconds; it stops a broken template
+  before it lands), and `CI gate`, which follows the Actions variable
+  `CI_GATE_MODE` (`NONE` today: skipped, which counts as passing). Never
+  rename either.
+- Runner: `.github/workflows/tests.yml`, GitHub Actions
   `ubuntu-24.04-arm`, 5-minute timeout; a newer push to a PR cancels the
   older PR run.
 - Steps: checkout, then `python3 scripts/validate_template.py template.tpl
@@ -90,6 +92,6 @@ Not applicable: there is no running infrastructure to tear down. To recover from
 
 ## Files
 
-- `.github/workflows/validate.yml` -- the only "infrastructure" this repo
-  has: the CI gate described above.
+- `.github/workflows/tests.yml` (+ `test-batch.yml`) -- the only "infrastructure" this repo
+  has: the CI described above.
 - `scripts/validate_template.py` -- the validator that gate runs.
