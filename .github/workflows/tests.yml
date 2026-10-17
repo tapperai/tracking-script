@@ -84,7 +84,7 @@ jobs:
   gate:
     name: CI gate
     needs: [validate-template]
-    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || github.head_ref == 'promote/dev-to-master' && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
@@ -101,7 +101,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -122,3 +122,19 @@ jobs:
           name: bisect-result
           path: bisect-result.json
           if-no-files-found: ignore
+
+  # Posts the culprit comment from the bisect job's artifact. No checkout, so it never runs merged code.
+  bisect-report:
+    name: bisect report
+    needs: [bisect]
+    if: ${{ !cancelled() && needs.bisect.result == 'success' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 3
+    permissions: { pull-requests: write, actions: read }
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: bisect-result }
+      - env: { GH_TOKEN: "${{ github.token }}", REPO: "${{ github.repository }}", RUN: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
+        run: |
+          pr=$(jq -r '.pr // empty' bisect-result.json); [ "$(jq -r .status bisect-result.json)" = CULPRIT ] && [ -n "$pr" ] || exit 0
+          gh pr comment "$pr" -R "$REPO" --body "The test batch at \`$(jq -r .bad bisect-result.json | cut -c1-12)\` on \`$(jq -r .branch bisect-result.json)\` failed; the bisect names this PR's merge \`$(jq -r .culprit_sha bisect-result.json | cut -c1-12)\` as the first bad commit ($RUN). Nothing was reverted automatically: Master in Loop reverts when prod is hurt, otherwise dispatches a fix forward."
