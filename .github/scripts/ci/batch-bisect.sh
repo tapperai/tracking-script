@@ -75,7 +75,10 @@ git checkout --quiet --detach "$BAD"
 
 git bisect start --first-parent "$BAD" "$GOOD" >/dev/null
 git bisect run bash -c "$CMD" > "$LOG" 2>&1
-culprit="$(sed -n 's/^\([0-9a-f]\{40\}\) is the first bad commit$/\1/p' "$LOG" | head -1)"
+# The first bad commit is refs/bisect/bad once git says it found it (git's wording varies by version:
+# "is the first bad commit" / "is the first 'bad' commit"), so read the ref, not the text.
+culprit=""
+if grep -qE "is the first .?bad.? commit" "$LOG"; then culprit="$(git rev-parse --verify -q refs/bisect/bad || true)"; fi
 git bisect reset >/dev/null 2>&1 || true
 tail -40 "$LOG"
 if [ -z "$culprit" ]; then
