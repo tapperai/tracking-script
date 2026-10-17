@@ -32,12 +32,12 @@ run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       sha: { description: "Commit to test (default: the branch head)", required: false, default: "" }
       reason: { description: "batch | nightly | requested | on-demand", required: false, default: "on-demand" }
-      mode: { description: "TYPECHECK | AFFECTED | FULL", required: false, default: "FULL", type: choice, options: [FULL, AFFECTED, TYPECHECK] }
+      mode: { description: "TYPECHECK | AFFECTED | FULL | NONE", required: false, default: "FULL", type: choice, options: [FULL, AFFECTED, TYPECHECK, NONE] }
 
 # Least privilege: these jobs only read the repo. main is the Gallery release channel, so the job token must never be
 # able to write to it.
