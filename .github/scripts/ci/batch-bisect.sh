@@ -8,11 +8,18 @@
 # bisect-result.json, and a comment on the culprit PR. Nothing is reverted or blocked here: Master gets the red run
 # as CI_RED in Loop and reverts (prod hurt) or dispatches a fix forward (otherwise).
 #
-# Env: GH_TOKEN (pull-requests:write, actions:read), GITHUB_REPOSITORY, BRANCH, BAD (sha), BISECT_CMD (the command that
+# SECURITY: this job runs merged code (BISECT_CMD at older commits), so it holds a READ-ONLY token (contents:read,
+# actions:read, pull-requests:read). The PR comment is posted by the separate `bisect-report` job (no checkout,
+# pull-requests:write) from the uploaded bisect-result.json. The script copies itself to $RUNNER_TEMP first, because
+# git bisect checks out trees that may not contain (this version of) it.
+# Env: GH_TOKEN (read-only), GITHUB_REPOSITORY, BRANCH, BAD (sha), BISECT_CMD (the command that
 # exits non-zero on the failure; keep it to the failing suite or files so each step is short), optional GOOD,
 # CI_BATCH_SIZE (fallback range when no green batch exists), TESTS_WORKFLOW (default tests.yml).
 # Needs a checkout with full history (fetch-depth 0).
 set -uo pipefail
+if [ -z "${BATCH_BISECT_COPY:-}" ]; then
+  self="${RUNNER_TEMP:-/tmp}/batch-bisect.sh"; cp "$0" "$self"; BATCH_BISECT_COPY=1 exec bash "$self" "$@"
+fi
 
 REPO="${GITHUB_REPOSITORY:?}"; BRANCH="${BRANCH:?}"; BAD="${BAD:?}"; CMD="${BISECT_CMD:?}"
 WF="${TESTS_WORKFLOW:-tests.yml}"; N="${CI_BATCH_SIZE:-10}"
@@ -73,7 +80,4 @@ title="$(git log -1 --format=%s "$culprit")"
 say "BATCH CULPRIT: $culprit ${pr:+PR #$pr} by $who: $title"
 echo "::error title=Batch culprit::$culprit ${pr:+PR #$pr} by $who"
 result CULPRIT "$culprit" "${pr:-}" "$who" "$skipped" "$title"
-if [ -n "$pr" ]; then
-  gh pr comment "$pr" -R "$REPO" --body "The test batch at \`${BAD:0:12}\` on \`$BRANCH\` failed and the bisect names this PR's merge \`${culprit:0:12}\` as the first bad commit (run ${GITHUB_SERVER_URL:-https://github.com}/$REPO/actions/runs/${GITHUB_RUN_ID:-}). Nothing was reverted automatically; Master in Loop decides: revert when prod is hurt, otherwise a fix forward." >/dev/null 2>&1 || true
-fi
 exit 0
