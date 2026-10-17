@@ -20,6 +20,11 @@
 # test set, so TYPECHECK, AFFECTED and FULL only add `CI gate` over it. The test batch (test-batch.yml: every
 # CI_BATCH_SIZE merges, nightly, on demand) runs it on main and bisects a red run to the guilty merge.
 #
+# PUBLIC REPO: a dispatch (the batch) validates the BRANCH HEAD it was started on, never a commit named by an input:
+# checking out an input-named ref in the default-branch context is what code scanning flags as cache poisoning. The
+# batch dispatches at the head it just counted, so the two are the same commit unless a newer merge landed in between
+# (then the newer head is what gets tested, and a notice says so). The bisect walks the branch's own first-parent line.
+#
 # COST: 1 billed minute per ready PR (arm64, $0.005); a batch run 1 minute.
 name: Tests
 run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.reason || github.event_name }})"
@@ -54,13 +59,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.sha || '' }}
           # Do not store the job token in .git/config: later steps run template and test code, which must not be able
           # to reuse it.
           persist-credentials: false
           # Full history: --metadata resolves every sha in metadata.yaml and checks the Gallery-served one is an
           # ancestor of HEAD.
           fetch-depth: 0
+      - name: Which commit this run tests
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ASKED: ${{ inputs.sha }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          if [ -n "${ASKED}" ] && [ "${ASKED}" != "${head}" ]; then
+            echo "::notice::Asked for ${ASKED}; this run tests the branch head ${head} (public repo: no input-named checkout)."
+          fi
       - name: Validate template structure, exact permission grants and the Gallery-served sha
         run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
       - name: Run the ___TESTS___ scenarios (GTM permission semantics)
@@ -93,7 +106,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Bisect
