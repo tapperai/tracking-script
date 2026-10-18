@@ -26,6 +26,14 @@
 # (then the newer head is what gets tested, and a notice says so). The bisect walks the branch's own first-parent line.
 #
 # COST: 1 billed minute per ready PR (arm64, $0.005); a batch run 1 minute.
+# TESTING POLICY (2026-10-18; "Testing a change" in CLAUDE.md). The author's recorded choice wins over CI_GATE_MODE, in the
+# mode expression below (identical in every place it is inlined): label `ci:skip-tests`, or `Tests: skip` / `Tests: local`
+# in the PR description -> NONE; label `ci:run-tests` -> FULL; label `ci:run-affected`, or `Tests: affected` in the PR
+# description -> AFFECTED. A dispatch in mode AFFECTED (label `ci:run-affected` through ci-label.yml, or a merged commit
+# with the trailer `Tests: affected` through batch-trigger.sh) measures `base` (default the sha's first parent) ... sha and
+# is named `Tests <sha> (affected)`: batch-trigger.sh's last-tested lookup ignores such runs. The every-10-merges batch
+# counts only affected and unmarked merges (`Tests: local` / `Tests: skip` ones do not); ONE nightly FULL run per repo.
+# The expression holds `: `, so every key that carries it is a folded block scalar (a plain scalar would not parse).
 name: Tests
 run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.reason || github.event_name }})"
 
@@ -38,6 +46,7 @@ on:
       sha: { description: "Commit to test (default: the branch head)", required: false, default: "" }
       reason: { description: "batch | nightly | requested | on-demand", required: false, default: "on-demand" }
       mode: { description: "TYPECHECK | AFFECTED | FULL | NONE", required: false, default: "FULL", type: choice, options: [FULL, AFFECTED, TYPECHECK, NONE] }
+      base: { description: "AFFECTED only: the commit the change is measured from (default: the sha's first parent)", required: false, default: "" }
 
 # Least privilege: these jobs only read the repo. main is the Gallery release channel, so the job token must never be
 # able to write to it.
@@ -78,13 +87,16 @@ jobs:
         run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
       - name: Run the ___TESTS___ scenarios (GTM permission semantics)
         run: node scripts/run_template_tests.mjs template.tpl
+      - name: test-changed selection (node --test)
+        run: node --test scripts/test-changed.test.mjs
 
   # THE GATE-MODE CONTEXT (ruleset `required-checks`, main), required beside the pre-deploy check. Skipped under NONE,
   # which GitHub counts as passing. Never rename it, never paths-ignore this workflow.
   gate:
     name: CI gate
     needs: [validate-template]
-    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
+    if: >-
+      ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.body, 'Tests: skip') && 'NONE' || contains(github.event.pull_request.body, 'Tests: local') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || contains(github.event.pull_request.labels.*.name, 'ci:run-affected') && 'AFFECTED' || contains(github.event.pull_request.body, 'Tests: affected') && 'AFFECTED' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
