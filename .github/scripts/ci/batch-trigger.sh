@@ -16,7 +16,9 @@
 #
 # Needs: a checkout with first-parent history (fetch-depth 0, filter blob:none), GH_TOKEN with actions:write and
 # pull-requests:read. Env: GITHUB_REPOSITORY, GITHUB_EVENT_NAME, GITHUB_REF_NAME, GITHUB_SHA (set by Actions),
-# CI_BATCH_SIZE, TESTS_WORKFLOW (default tests.yml), BATCH_BRANCHES (default "master dev main").
+# CI_BATCH_SIZE, TESTS_WORKFLOW (default tests.yml), BATCH_BRANCHES (default "master dev main" plus the repo's
+# default branch). The nightly pass skips, with a line, every listed branch the repo does not have; a repo with no
+# active TESTS_WORKFLOW dispatches nothing and ends green.
 set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:?}"
@@ -30,6 +32,30 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 say() { printf '%s\n' "$*" | tee -a "$SUMMARY"; }
 
+# GET <path> through gh with --jq <filter>: the answer on success; nothing (status 0) when GitHub answers 404; status 1
+# on any other failure. gh prints an error body on STDOUT even with --jq, so a failed call's output is never used.
+get_or_absent() {
+  local out
+  if out="$(gh api "$1" --jq "$2" 2>/dev/null)"; then printf '%s\n' "$out"; return 0; fi
+  if grep -q '"status": *"404"' <<<"$out"; then return 0; fi
+  printf 'gh api %s failed: %s\n' "$1" "${out:0:300}" >&2
+  return 1
+}
+
+# The head sha of <branch>; empty when the repo has no such branch (a renamed branch's redirect counts as none).
+branch_head() {
+  local out
+  out="$(get_or_absent "repos/$REPO/branches/$1" "select(.name == \"$1\") | .commit.sha")" || return 1
+  grep -xE '[0-9a-f]{40}' <<<"$out" || true
+}
+
+# No active tests workflow in this repo (not added yet, or disabled): nothing to dispatch, and that is not a failure.
+wf_state="$(get_or_absent "repos/$REPO/actions/workflows/$WF" .state)"
+if [ "$wf_state" != "active" ]; then
+  say "$WF is ${wf_state:-not in this repo}: nothing to dispatch."
+  exit 0
+fi
+
 # The sha the newest batch run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"); a cancelled
 # run tested nothing. Empty when there is none.
 last_tested() {
@@ -38,16 +64,24 @@ last_tested() {
     | grep -oE '[0-9a-f]{40}' | head -1 || true
 }
 
-dispatch() { # <branch> <sha> <reason>
-  gh workflow run "$WF" -R "$REPO" --ref "$1" -f sha="$2" -f reason="$3"
-  say "dispatched $WF on $1 at ${2:0:12} (reason: $3)"
+dispatch() { # <branch> <sha> <reason>; a ref GitHub does not know is skipped with a line, any other failure is status 1
+  local out
+  if out="$(gh workflow run "$WF" -R "$REPO" --ref "$1" -f sha="$2" -f reason="$3" 2>&1)"; then
+    [ -z "$out" ] || printf '%s\n' "$out"
+    say "dispatched $WF on $1 at ${2:0:12} (reason: $3)"
+  elif grep -q 'No ref found' <<<"$out"; then
+    say "$1: GitHub has no ref $1 in $REPO, $WF not dispatched."
+  else
+    printf '%s\n' "$out" >&2
+    return 1
+  fi
 }
 
 # The merged PR whose merge commit is <sha> (first match), as "number<TAB>labels(comma)<TAB>merged_by". Empty if none.
 pr_of() {
   gh api "repos/$REPO/commits/$1/pulls" \
     --jq ".[] | select(.merge_commit_sha == \"$1\") | [(.number|tostring), ([.labels[].name]|join(\",\")), (.merged_by.login // .user.login // \"\")] | @tsv" \
-    2>/dev/null | head -1 || true
+    2>/dev/null | grep -E $'^[0-9]+\t' | head -1 || true
 }
 
 trailer() { # <sha> <key>: the value of the first trailer <key> in the commit message
@@ -81,11 +115,17 @@ if [ "$EVENT" = "push" ]; then
   exit 0
 fi
 
-# schedule / workflow_dispatch of this trigger: the nightly pass over every long-lived branch.
+# schedule / workflow_dispatch of this trigger: the nightly pass over every long-lived branch the repo has. With
+# BATCH_BRANCHES unset the repo's default branch is always one of them (tracking-script's is main, tracker-protos' dev).
+if [ -z "${BATCH_BRANCHES:-}" ]; then BRANCHES="$(gh api "repos/$REPO" --jq .default_branch) $BRANCHES"; fi
+seen=" "; failed=""
 for b in $BRANCHES; do
-  head="$(gh api "repos/$REPO/branches/$b" --jq .commit.sha 2>/dev/null || true)"
-  [ -n "$head" ] || continue
+  case "$seen" in *" $b "*) continue ;; esac
+  seen="$seen$b "
+  head="$(branch_head "$b")" || { failed="$failed $b"; continue; }
+  if [ -z "$head" ]; then say "$b: no such branch in $REPO, skipped."; continue; fi
   last="$(last_tested "$b")"
   if [ "$last" = "$head" ]; then say "$b: head ${head:0:12} already tested."; continue; fi
-  dispatch "$b" "$head" "nightly"
+  dispatch "$b" "$head" "nightly" || failed="$failed $b"
 done
+if [ -n "$failed" ]; then say "FAILED on:$failed (see the errors above)."; exit 1; fi
