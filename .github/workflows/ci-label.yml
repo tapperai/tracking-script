@@ -1,8 +1,12 @@
-# CI label switch (CI standard 2026-10-17). tests.yml does NOT run on label events: a Loop label (loop:review-*,
-# loop:drive) would restart a FULL run, and a skipped run would hide one still running or red. Only the two `ci:`
-# labels act, here: adding `ci:run-tests` dispatches the FULL set on the PR head; adding `ci:skip-tests` dispatches a
-# NONE run, whose skipped `CI gate` on the head lets the PR merge (the reason goes in a PR comment; the batch still
-# covers the merge). Removing either does nothing: the next push runs under CI_GATE_MODE.
+# CI label switch (CI standard 2026-10-17, testing policy 2026-10-18). tests.yml does NOT run on label events: a Loop
+# label (loop:review-*, loop:drive) would restart a FULL run, and a skipped run would hide one still running or red.
+# Only the three `ci:` labels act, here:
+#   ci:run-tests     dispatches the FULL set on the PR head;
+#   ci:run-affected  dispatches mode AFFECTED on the PR head, measured from the PR's base sha (the run is named
+#                    `Tests <sha> (affected)`: batch-trigger.sh's last-tested lookup ignores such runs);
+#   ci:skip-tests    dispatches a NONE run, whose skipped `CI gate` on the head lets the PR merge (the reason goes in a
+#                    PR comment; the batch still covers the merge).
+# Removing a label does nothing: the next push runs under the author's recorded choice (tests.yml), else CI_GATE_MODE.
 # COST: no runner for any other label (job-level if); one ~10 s job per ci: label.
 name: CI label switch
 
@@ -16,7 +20,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: ${{ github.event.label.name == 'ci:run-tests' || github.event.label.name == 'ci:skip-tests' }}
+    if: ${{ github.event.label.name == 'ci:run-tests' || github.event.label.name == 'ci:run-affected' || github.event.label.name == 'ci:skip-tests' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 3
     steps:
@@ -25,10 +29,19 @@ jobs:
           REPO: ${{ github.repository }}
           REF: ${{ github.event.pull_request.head.ref }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           LABEL: ${{ github.event.label.name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           [ "$SAME_REPO" = true ] || { echo "PR from a fork: no dispatch"; exit 0; }
-          if [ "$LABEL" = ci:run-tests ]; then mode=FULL; else mode=NONE; fi
-          gh workflow run tests.yml -R "$REPO" --ref "$REF" -f sha="$SHA" -f reason=requested -f mode="$mode"
+          case "$LABEL" in
+            ci:run-tests)    mode=FULL;     reason=requested ;;
+            ci:run-affected) mode=AFFECTED; reason=affected ;;
+            *)               mode=NONE;     reason=requested ;;
+          esac
+          if [ "$mode" = AFFECTED ]; then
+            gh workflow run tests.yml -R "$REPO" --ref "$REF" -f sha="$SHA" -f reason="$reason" -f mode="$mode" -f base="$BASE_SHA"
+          else
+            gh workflow run tests.yml -R "$REPO" --ref "$REF" -f sha="$SHA" -f reason="$reason" -f mode="$mode"
+          fi
           echo "dispatched tests.yml on $REF at ${SHA:0:12}, mode $mode" >> "$GITHUB_STEP_SUMMARY"

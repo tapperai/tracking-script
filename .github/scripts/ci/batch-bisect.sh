@@ -46,13 +46,24 @@ fi
 range="$(git rev-list --first-parent "$GOOD..$BAD")"
 say "Bisecting $(wc -l <<<"$range" | tr -d ' ') merge(s) on $BRANCH: good ${GOOD:0:12}, bad ${BAD:0:12}."
 
-# Merges in the range whose PR said "skip tests" (the batch is their only test).
-skipped=""
+# Merges in the range whose author chose NOT to test them on their own (`Tests: skip`, label ci:skip-tests, or
+# `Tests: local`): the batch is their only run on GitHub. A failed `gh api --jq` prints its error body on STDOUT, so the
+# answer is accepted only as a line that starts with a numeric PR number; anything else counts as "no PR found".
+skipped=""; localrun=""
 for c in $range; do
-  p="$(gh api "repos/$REPO/commits/$c/pulls" --jq ".[] | select(.merge_commit_sha==\"$c\" and ([.labels[].name]|index(\"ci:skip-tests\"))) | .number" 2>/dev/null | head -1 || true)"
-  [ -n "$p" ] && skipped="${skipped:+$skipped,}$p"
+  out="$(gh api "repos/$REPO/commits/$c/pulls" --jq ".[] | select(.merge_commit_sha==\"$c\") | [(.number|tostring), ([.labels[].name]|join(\",\")), ((.body // \"\") | split(\"\\n\") | map(select(test(\"^Tests: *\"; \"i\"))) | (.[0] // \"\"))] | @tsv" 2>/dev/null)" || out=""
+  line="$(grep -E $'^[0-9]+\t' <<<"$out" | head -1 || true)"
+  [ -n "$line" ] || continue
+  p="${line%%$'\t'*}"; rest="${line#*$'\t'}"; labels="${rest%%$'\t'*}"; body_tr="${rest#*$'\t'}"
+  tr_commit="$(git log -1 --format=%B "$c" 2>/dev/null | grep -iE '^Tests: *' | tail -1 || true)"
+  if grep -qE '(^|,)ci:skip-tests(,|$)' <<<"$labels" || grep -qiE '^Tests: *skip' <<<"$tr_commit"$'\n'"$body_tr"; then
+    skipped="${skipped:+$skipped,}$p"
+  elif grep -qiE '^Tests: *local' <<<"$tr_commit"$'\n'"$body_tr"; then
+    skipped="${skipped:+$skipped,}$p"; localrun="${localrun:+$localrun,}$p"
+  fi
 done
-[ -n "$skipped" ] && say "Merges in this batch labelled ci:skip-tests: #${skipped//,/, #}."
+[ -n "$skipped" ] && say "Merges in this batch that chose not to test on their own (Tests: skip / Tests: local / ci:skip-tests): #${skipped//,/, #}. The batch is their only GitHub run."
+[ -n "$localrun" ] && say "Of those, tested locally by their author: #${localrun//,/, #}."
 
 # Is the failure real at BAD? A pass here is a flake (or a runner fault): say so and stop.
 git checkout --quiet --detach "$BAD"
