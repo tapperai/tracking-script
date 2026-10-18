@@ -1,5 +1,7 @@
 # Backlog
 
+- 2026-10-18: testing policy, skip path proven by this docs-only change (devops-sre).
+
 Living list of every TODO the user has called out. When the user mentions
 something new, capture it here verbatim before starting work. When something
 lands, move it under "Done" with the SHA / date.
