@@ -91,3 +91,5 @@ prioritized.)
 ## Done
 
 (items move here with a one-line note + commit SHA / date once shipped + verified)
+
+- 2026-10-18: testing policy, affected path proven by this docs-only change (devops-sre).
