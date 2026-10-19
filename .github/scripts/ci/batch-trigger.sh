@@ -215,7 +215,9 @@ for b in $BRANCHES; do
   if [ -z "$head" ]; then say "$b: no such branch in $REPO, skipped."; continue; fi
   have="$have $b:$head"
 done
-head_of() { for kv in $have; do [ "${kv%%:*}" = "$1" ] && echo "${kv#*:}"; done; }
+# The head sha of <branch> in $have; empty when it is not there. Status 0 either way: under `set -e` a `[ ] && echo`
+# loop ends on the last test, so a branch that is not the last in $have killed the nightly (master-only repos).
+head_of() { local kv; for kv in $have; do if [ "${kv%%:*}" = "$1" ]; then echo "${kv#*:}"; fi; done; }
 dev_head="$(head_of dev)"
 for kv in $have; do
   b="${kv%%:*}"; head="${kv#*:}"
