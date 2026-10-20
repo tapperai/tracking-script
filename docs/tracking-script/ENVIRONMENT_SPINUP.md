@@ -1,9 +1,9 @@
 # Tracking Script — Environment Spinup
 
-> **Status:** `SHIPPED`
+> **Status:** ACTIVE
 >
 > **Created:** 2026-08-26
-> **Last updated:** 2026-09-29
+> **Last updated:** 2026-10-20
 >
 > **Implemented in:** tracking-script
 
@@ -43,16 +43,18 @@ execution environment.
 ## CI/CD
 
 - Trigger (CI standard 2026-10-17): a ready PR to `main` (`opened`,
-  `synchronize`, `reopened`, `ready_for_review`, label changes) and the test
+  `synchronize`, `reopened`, `ready_for_review`; a `ci:` label acts through
+  `ci-label.yml`, which dispatches `tests.yml`) and the test
   batch (`test-batch.yml`: every `CI_BATCH_SIZE` merges, nightly, on demand;
   a red batch is bisected to the guilty merge). Draft PRs run nothing. There
   is no merge queue and no push run.
-- Required checks (ruleset `required-checks` on `main`):
-  `Validate template.tpl (pre-deploy gate)`, the job name, which runs on every
-  ready PR in every gate mode (about 10 seconds; it stops a broken template
-  before it lands), and `CI gate`, which follows the Actions variable
-  `CI_GATE_MODE` (`NONE` today: skipped, which counts as passing). Never
-  rename either.
+- Checks: `Validate template.tpl (pre-deploy gate)`, the job name, which runs
+  on every ready PR in every gate mode (about 10 seconds; it stops a broken
+  template before it lands), and `CI gate`, which follows the Actions variable
+  `CI_GATE_MODE` (skipped under `NONE`, which counts as passing). Ruleset
+  `required-checks` (id 25124315) names both for `main` but has been DISABLED
+  since 2026-10-17, so GitHub requires neither today: do not merge on a red
+  pre-deploy check. Never rename either.
 - Runner: `.github/workflows/tests.yml`, GitHub Actions
   `ubuntu-24.04-arm`, 5-minute timeout; a newer push to a PR cancels the
   older PR run.
@@ -87,7 +89,8 @@ Not applicable: there is no running infrastructure to tear down. To recover from
 ## Verification
 
 - `python3 scripts/validate_template.py template.tpl` exits `0`.
-- The GitHub Actions "Validate GTM Template" check is green on `main`.
+- The `Validate template.tpl (pre-deploy gate)` check is green on the PR
+  (and on the latest test-batch run on `main`).
 - Manual GTM Preview check — see `TESTING.md` §3.
 
 ## Files

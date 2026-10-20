@@ -1,9 +1,9 @@
 # Tracking Script — GTM Community Template
 
-> **Status:** `SHIPPED`
+> **Status:** ACTIVE
 >
 > **Created:** 2026-08-26
-> **Last updated:** 2026-10-01
+> **Last updated:** 2026-10-20
 >
 > **Implemented in:** tracking-script
 
@@ -57,8 +57,9 @@ release is a merge that adds a new first `versions` entry, and a merge that
 changes `template.tpl` without one reaches no customer. Imported templates
 never auto-update; each GTM container that imported the template has to
 accept the update and publish. `.github/workflows/tests.yml` gates every
-ready PR against `main` with `scripts/validate_template.py` (the required
-check `Validate template.tpl (pre-deploy gate)`, in every gate mode).
+ready PR against `main` with `scripts/validate_template.py` (the check
+`Validate template.tpl (pre-deploy gate)`, in every gate mode; the ruleset
+that would require it is disabled since 2026-10-17, so never merge it red).
 
 ---
 
@@ -153,7 +154,7 @@ Not applicable — no message broker.
    carries a byte-identical `template.tpl`.
 4. Open a PR to `main` and mark it ready (a draft runs nothing).
    `.github/workflows/tests.yml` runs on the PR (`Validate template.tpl
-   (pre-deploy gate)`, required, in every gate mode):
+   (pre-deploy gate)`, in every gate mode; do not merge it red):
    - `python3 scripts/validate_template.py template.tpl --metadata
      metadata.yaml` fails the check if any `___..._` JSON section doesn't
      parse, if the sandboxed JS calls a `require()`'d API (`injectScript`,
@@ -231,5 +232,8 @@ See [`TESTING.md`](TESTING.md).
 - Run the four `___TESTS___` scenarios in GTM's own editor and one GTM
   Preview on a test site with the fixed template (the local runner emulates
   GTM; it is not GTM): `tapper.init` called and the tag status `Succeeded`.
-- Confirm the Gallery listing serves the new sha (Google: typically 2-3 days
-  after `metadata.yaml` lands on `main`).
+- Get the Gallery to serve `295cc787`. Read on 2026-10-20 (three weeks after
+  the merge): the Gallery JSON lists `295cc787` first with `updateError: 5`,
+  and the served `access_globals` permission still has no key (the `551ea056`
+  template), so the import of the fix failed and installers still get the
+  template that cannot call `tapper.init`.
