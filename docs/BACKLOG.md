@@ -27,7 +27,7 @@ them. Each item should have enough context to pick up cold.)
 
 ## P0 — needs verification
 
-- **2026-10-17: CI standard (no test gate on merges) live.** `tests.yml` holds the test set (mode `CI_GATE_MODE`, NONE today), ruleset `required-checks` (id 25124315) requires `CI gate`, `test-batch.yml` runs it every 10 merges, nightly and on demand and bisects a red batch. Verify: the first batch or nightly run on each branch is green.
+- **2026-10-17: CI standard (no test gate on merges) live.** `tests.yml` holds the test set (mode `CI_GATE_MODE`), `test-batch.yml` runs it every 10 merges, nightly and on demand and bisects a red batch. Ruleset `required-checks` (id 25124315) names `CI gate` and the pre-deploy check but is DISABLED (read 2026-10-20), so neither is required on `main`; decide whether it should be enforced. The batch and nightly runs on `main` were green on 2026-10-19 and 2026-10-20.
 
 (Implemented somewhere in the build but the user hasn't manually seen it work.
 Walk through each one before claiming done.)
@@ -64,6 +64,12 @@ Walk through each one before claiming done.)
        `Succeeded`, `bundle.js` loads from `monitor.tapper.ai`, and
        `tapper.init` is called once with the key.
   Move this item to Done only when all three hold.
+
+  **Read 2026-10-20:** the Gallery JSON lists `295cc787` first but with
+  `updateError: 5`, and the served `access_globals` permission still has no
+  key, so the Gallery never imported the fix; (3) does not hold and (1) and
+  (2) cannot start. Next: check the import status in the Gallery and fix what
+  it rejects.
 
 ---
 

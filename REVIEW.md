@@ -32,7 +32,8 @@ comes from the access_globals defect fixed in tracking-script#7.
 ## Skip
 
 - `Validate template.tpl (pre-deploy gate)` (`.github/workflows/tests.yml`) runs the validator and
-  the test runner on every ready PR and is required; do not restate its output.
+  the test runner on every ready PR; do not restate its output (but a red one blocks: the ruleset that
+  would require it is disabled, so nothing else stops the merge).
 - Gallery category choices, README wording.
 
 ## Checks worth running
