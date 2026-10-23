@@ -13,10 +13,15 @@
 #   unmarked  no choice recorded. Counted toward a batch.
 # `ci:run-tests` / `Tests: run` still start the FULL set at once.
 #
-# The full test set (tests.yml: typecheck, lint, every suite, FULL) runs:
+# The test set (tests.yml) runs:
 #   - every CI_BATCH_SIZE merges (org variable, default 10) per long-lived branch that are `affected` or unmarked:
-#     THIS script, on every push (a promotion merge counts when ANY change it carries is affected or unmarked);
-#   - ONCE a night per repo, the single safety net for cross-change breaks, and only when the branch moved: THIS
+#     THIS script, on every push (a promotion merge counts when ANY change it carries is affected or unmarked). Since
+#     2026-10-23 (operator decision, GitHub Actions cost) the batch runs mode AFFECTED against the last tested sha
+#     (`base`), reason `batch-affected`: typecheck, lint and only the tests those merges can reach (tests.yml widens
+#     to the whole suite by its own rules: dependencies, config, test setup, CI). When there is no tested sha to
+#     measure from (nothing tested yet, history rewritten) the batch is FULL, reason `batch`;
+#   - ONCE a night per repo, FULL, the single safety net for cross-change breaks, and only when the branch moved
+#     (since the last FULL run; an AFFECTED batch does not count as having tested the head): THIS
 #     script, on the schedule. A repo with a dev branch tests dev; master only when its tree differs from dev's
 #     (master and dev hold the same code, so testing both would be the same run twice);
 #   - on demand: `gh workflow run tests.yml -f sha=<sha> -f reason=on-demand` (Loop: `@master run tests <repo> [sha]`).
@@ -61,20 +66,26 @@ branch_head() {
   grep -xE '[0-9a-f]{40}' <<<"$out" || true
 }
 
-# The sha the newest FULL run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"); a cancelled
-# run tested nothing, and an `affected` run tested only part of the tree, so neither moves the batch baseline.
-last_tested() {
+# The sha the newest run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"); a cancelled run
+# tested nothing. A per-merge `affected` run tested only part of the tree, so it never moves the batch baseline. A
+# `batch-affected` run (the every-10-merges batch since 2026-10-23, mode AFFECTED) is the baseline of the NEXT batch (it
+# measured its merges), but it did not test the whole tree: `strict` (the nightly) takes only a `(batch)` or `(nightly)` run (an allowlist: `(requested)` may be mode NONE, `(on-demand)` any mode), so the nightly stays a FULL
+# run of any head no FULL run has tested.
+last_tested() { # <branch> [strict]
+  local partial='\\(affected\\)$' only='.'
+  [ "${2:-}" != strict ] || { partial='^$'; only='\\((batch|nightly)\\)$'; }
   gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$1&event=workflow_dispatch&per_page=30" \
-    --jq '.workflow_runs[] | select(.conclusion != "cancelled") | .display_title | select(test("\\(affected\\)$") | not)' 2>/dev/null \
+    --jq ".workflow_runs[] | select(.conclusion != \"cancelled\") | .display_title | select(test(\"$only\") and (test(\"$partial\") | not))" 2>/dev/null \
     | grep -oE '[0-9a-f]{40}' | head -1 || true
 }
 
-dispatch() { # <branch> <sha> <reason> [mode]; a ref GitHub does not know is skipped with a line, any other failure is status 1
+dispatch() { # <branch> <sha> <reason> [mode] [base]; a ref GitHub does not know is skipped with a line, any other failure is status 1
   local out mode="${4:-FULL}" extra=()
   [ "$mode" = FULL ] || extra=(-f mode="$mode")   # FULL is every tests.yml's default: older copies need no `mode` input
+  [ -z "${5:-}" ] || extra+=(-f base="$5")        # AFFECTED only: the commit the change is measured from
   if out="$(gh workflow run "$WF" -R "$REPO" --ref "$1" -f sha="$2" -f reason="$3" ${extra[@]+"${extra[@]}"} 2>&1)"; then
     [ -z "$out" ] || printf '%s\n' "$out"
-    say "dispatched $WF on $1 at ${2:0:12} (reason: $3, mode $mode)"
+    say "dispatched $WF on $1 at ${2:0:12} (reason: $3, mode $mode${5:+, base ${5:0:12}})"
   elif grep -q 'No ref found' <<<"$out"; then
     say "$1: GitHub has no ref $1 in $REPO, $WF not dispatched."
   else
@@ -193,14 +204,20 @@ if [ "$EVENT" = "push" ]; then
     fi
   fi
   last="$(last_tested "$BRANCH")"
+  measurable=0   # 1 = there is a tested sha to measure the batch from, so the batch can run AFFECTED
   if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null && git merge-base --is-ancestor "$last" "$HEAD"; then
+    measurable=1
     count="$(count_unmarked_or_affected "$last" "$HEAD")"
     total="$(git rev-list --first-parent --count "$last..$HEAD")"
   else
-    count="$N"; total="$N"   # nothing tested yet on this branch (or history rewritten): start a batch now
+    count="$N"; total="$N"   # nothing tested yet on this branch (or history rewritten): start a batch now, FULL
   fi
   say "$BRANCH: $count merge(s) to test since the last tested commit ${last:0:12} ($total merged, the rest chose local or skip; batch size $N)."
-  if [ "$count" -ge "$N" ]; then dispatch "$BRANCH" "$HEAD" "batch" FULL; fi
+  if [ "$count" -ge "$N" ]; then
+    # The batch tests what its merges can reach (operator decision 2026-10-23); the nightly FULL run covers the rest.
+    if [ "$measurable" = 1 ]; then dispatch "$BRANCH" "$HEAD" "batch-affected" AFFECTED "$last"
+    else dispatch "$BRANCH" "$HEAD" "batch" FULL; fi
+  fi
   exit 0
 fi
 
@@ -227,7 +244,7 @@ for kv in $have; do
       say "$b: same tree as dev (${dev_head:0:12}); dev's nightly run covers it."; continue
     fi
   fi
-  last="$(last_tested "$b")"
+  last="$(last_tested "$b" strict)"
   if [ "$last" = "$head" ]; then say "$b: head ${head:0:12} already tested."; continue; fi
   dispatch "$b" "$head" "nightly" FULL || failed="$failed $b"
 done
