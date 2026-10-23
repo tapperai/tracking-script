@@ -69,13 +69,13 @@ branch_head() {
 # The sha the newest run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"); a cancelled run
 # tested nothing. A per-merge `affected` run tested only part of the tree, so it never moves the batch baseline. A
 # `batch-affected` run (the every-10-merges batch since 2026-10-23, mode AFFECTED) is the baseline of the NEXT batch (it
-# measured its merges), but it did not test the whole tree: `strict` (the nightly) skips it, so the nightly stays a FULL
+# measured its merges), but it did not test the whole tree: `strict` (the nightly) takes only a `(batch)` or `(nightly)` run (an allowlist: `(requested)` may be mode NONE, `(on-demand)` any mode), so the nightly stays a FULL
 # run of any head no FULL run has tested.
 last_tested() { # <branch> [strict]
-  local partial='\\(affected\\)$'
-  [ "${2:-}" != strict ] || partial='\\((batch-)?affected\\)$'
+  local partial='\\(affected\\)$' only='.'
+  [ "${2:-}" != strict ] || { partial='^$'; only='\\((batch|nightly)\\)$'; }
   gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$1&event=workflow_dispatch&per_page=30" \
-    --jq ".workflow_runs[] | select(.conclusion != \"cancelled\") | .display_title | select(test(\"$partial\") | not)" 2>/dev/null \
+    --jq ".workflow_runs[] | select(.conclusion != \"cancelled\") | .display_title | select(test(\"$only\") and (test(\"$partial\") | not))" 2>/dev/null \
     | grep -oE '[0-9a-f]{40}' | head -1 || true
 }
 

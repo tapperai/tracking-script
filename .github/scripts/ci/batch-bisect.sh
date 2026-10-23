@@ -14,7 +14,8 @@
 # git bisect checks out trees that may not contain (this version of) it.
 # Env: GH_TOKEN (read-only), GITHUB_REPOSITORY, BRANCH, BAD (sha), BISECT_CMD (the command that
 # exits non-zero on the failure; keep it to the failing suite or files so each step is short), optional GOOD,
-# CI_BATCH_SIZE (fallback range when no green batch exists), TESTS_WORKFLOW (default tests.yml).
+# CI_BATCH_SIZE (fallback range when no green batch exists), BISECT_MAX_MERGES (longest range walked, default 24),
+# TESTS_WORKFLOW (default tests.yml).
 # Needs a checkout with full history (fetch-depth 0).
 set -uo pipefail
 if [ -z "${BATCH_BISECT_COPY:-}" ]; then
@@ -36,16 +37,28 @@ result() { # <status> <culprit> <pr> <author> <untested-csv> <note>
 
 git fetch --quiet origin "$BRANCH" 2>/dev/null || true
 if [ -z "${GOOD:-}" ]; then
-  # GOOD_FULL_ONLY=1 (a red NIGHTLY): only a green FULL run proves the whole tree good. An AFFECTED run (`(affected)`, or
-  # the every-10-merges batch since 2026-10-23, `(batch-affected)`) tested part of it, and a failure it could not see
-  # may already be there: with one as GOOD the bisect would say PRE_EXISTING instead of naming the merge.
-  partial='^$'; [ "${GOOD_FULL_ONLY:-}" != 1 ] || partial='\\((batch-)?affected\\)$'
+  # GOOD_FULL_ONLY=1 (a red NIGHTLY): only a green FULL run proves the whole tree good, so only a run named `(batch)` (the FULL
+  # batch with nothing to measure from) or `(nightly)` counts (an allowlist: a `(requested)` run may be mode NONE, an
+  # `(on-demand)` or `(affected)` run AFFECTED, and the every-10-merges batch since 2026-10-23, `(batch-affected)`, tested
+  # part of the tree). A failure such a run could not see may already be there: with one as GOOD the bisect would say
+  # PRE_EXISTING instead of naming the merge.
+  only='.'; [ "${GOOD_FULL_ONLY:-}" != 1 ] || only='\\((batch|nightly)\\)$'
   GOOD="$(gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$BRANCH&event=workflow_dispatch&status=success&per_page=30" \
-    --jq ".workflow_runs[].display_title | select(test(\"$partial\") | not)" 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -1 || true)"
+    --jq ".workflow_runs[].display_title | select(test(\"$only\"))" 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -1 || true)"
 fi
 if [ -z "$GOOD" ] || ! git merge-base --is-ancestor "$GOOD" "$BAD" 2>/dev/null || [ "$GOOD" = "$BAD" ]; then
   GOOD="$(git rev-list --first-parent --max-count=$((N + 1)) "$BAD" | tail -1)"
   say "No green batch is an ancestor of ${BAD:0:12}; bisecting the last $N merges (from ${GOOD:0:12})."
+fi
+# A range longer than the job can walk (about log2(range) + 2 runs of BISECT_CMD inside the job's 30 min) would be
+# cancelled by the timeout and name nobody (front-end dev 2026-10-18: 116 merges, no green batch for a day). Walk the
+# newest BISECT_MAX_MERGES (default 24) instead: if the failure is already there at the window's old end the result is
+# PRE_EXISTING ("it predates this window"), which is true and still tells Master to look further back.
+MAXM="${BISECT_MAX_MERGES:-24}"
+if [ "$(git rev-list --first-parent --count "$GOOD..$BAD")" -gt "$MAXM" ]; then
+  was="${GOOD:0:12}"
+  GOOD="$(git rev-list --first-parent --max-count=$((MAXM + 1)) "$BAD" | tail -1)"
+  say "The last green batch (${was}) is more than $MAXM merges back; bisecting only the newest $MAXM (from ${GOOD:0:12})."
 fi
 range="$(git rev-list --first-parent "$GOOD..$BAD")"
 say "Bisecting $(wc -l <<<"$range" | tr -d ' ') merge(s) on $BRANCH: good ${GOOD:0:12}, bad ${BAD:0:12}."
