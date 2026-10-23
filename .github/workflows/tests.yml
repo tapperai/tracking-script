@@ -34,6 +34,14 @@
 # is named `Tests <sha> (affected)`: batch-trigger.sh's last-tested lookup ignores such runs. The every-10-merges batch
 # counts only affected and unmarked merges (`Tests: local` / `Tests: skip` ones do not); ONE nightly FULL run per repo.
 # The expression holds `: `, so every key that carries it is a folded block scalar (a plain scalar would not parse).
+# THE EVERY-10-MERGES BATCH RUNS AFFECTED (2026-10-23, operator decision, GitHub Actions cost). test-batch.yml now
+# dispatches this workflow in mode AFFECTED with `base` = the last tested sha and reason `batch-affected`: the run
+# measures base...sha (the merges since the last tested batch or nightly) and runs only what they can reach, widening to
+# the whole suite by this file's own rules. It is FULL (reason `batch`) only when there is no tested sha to measure from.
+# The ONE nightly run per repo stays FULL and is what covers the rest; an AFFECTED batch does not count as having tested
+# a head for the nightly. A red `batch-affected` run bisects like a red batch (`bisect`, GOOD = the newest green run; a
+# red nightly takes only a green FULL run as GOOD, GOOD_FULL_ONLY), and reaches Master as CI_RED, but its green never
+# resolves a CI_RED. The run-name reason is part of the LOAD-BEARING name: batch-trigger.sh finds the baseline by it.
 name: Tests
 run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.reason || github.event_name }})"
 
@@ -108,7 +116,7 @@ jobs:
   bisect:
     name: Bisect the batch
     needs: [validate-template]
-    if: ${{ failure() && github.event_name == 'workflow_dispatch' && (inputs.reason == 'batch' || inputs.reason == 'nightly') }}
+    if: ${{ failure() && github.event_name == 'workflow_dispatch' && (inputs.reason == 'batch' || inputs.reason == 'batch-affected' || inputs.reason == 'nightly') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -126,6 +134,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BAD: ${{ inputs.sha || github.sha }}
           CI_BATCH_SIZE: ${{ vars.CI_BATCH_SIZE || '10' }}
+          GOOD_FULL_ONLY: ${{ inputs.reason == 'nightly' && '1' || '' }}
           BISECT_CMD: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml && node scripts/run_template_tests.mjs template.tpl
         run: bash .github/scripts/ci/batch-bisect.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

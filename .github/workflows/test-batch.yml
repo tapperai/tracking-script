@@ -1,7 +1,7 @@
 # Test batch trigger (CI standard 2026-10-17; root CLAUDE.md "GitHub Actions cost" rule 7).
 #
-# Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts the full set
-# (tests.yml) every CI_BATCH_SIZE merges (org variable, default 10) on each long-lived branch, nightly for any branch
+# Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts tests.yml in mode AFFECTED (since 2026-10-23,
+# against the last tested sha) every CI_BATCH_SIZE merges (org variable, default 10) on each long-lived branch, nightly (FULL) for any branch
 # head not yet tested, and at once for a merge labelled `ci:run-tests` or a commit with the trailer `Tests: run`.
 # Logic and the skip record: .github/scripts/ci/batch-trigger.sh.
 #

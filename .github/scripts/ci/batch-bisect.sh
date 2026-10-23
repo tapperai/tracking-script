@@ -36,8 +36,12 @@ result() { # <status> <culprit> <pr> <author> <untested-csv> <note>
 
 git fetch --quiet origin "$BRANCH" 2>/dev/null || true
 if [ -z "${GOOD:-}" ]; then
+  # GOOD_FULL_ONLY=1 (a red NIGHTLY): only a green FULL run proves the whole tree good. An AFFECTED run (`(affected)`, or
+  # the every-10-merges batch since 2026-10-23, `(batch-affected)`) tested part of it, and a failure it could not see
+  # may already be there: with one as GOOD the bisect would say PRE_EXISTING instead of naming the merge.
+  partial='^$'; [ "${GOOD_FULL_ONLY:-}" != 1 ] || partial='\\((batch-)?affected\\)$'
   GOOD="$(gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$BRANCH&event=workflow_dispatch&status=success&per_page=30" \
-    --jq '.workflow_runs[].display_title' 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -1 || true)"
+    --jq ".workflow_runs[].display_title | select(test(\"$partial\") | not)" 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -1 || true)"
 fi
 if [ -z "$GOOD" ] || ! git merge-base --is-ancestor "$GOOD" "$BAD" 2>/dev/null || [ "$GOOD" = "$BAD" ]; then
   GOOD="$(git rev-list --first-parent --max-count=$((N + 1)) "$BAD" | tail -1)"
