@@ -5,14 +5,16 @@
 # head not yet tested, and at once for a merge labelled `ci:run-tests` or a commit with the trailer `Tests: run`.
 # Logic and the skip record: .github/scripts/ci/batch-trigger.sh.
 #
-# COST: one ubuntu-24.04-arm job of ~15 s per push to a long-lived branch (1 billed minute, $0.005) plus one a night.
+# NO SCHEDULE HERE since T-10669 (2026-10-27): the nightly FULL run moved to loop-prod (loop infra/scripts/nightly-full-tests.sh,
+# repos in loop infra/nightly-tests.manifest.json), which raises a red as CI_RED with this repo's tests.yml fingerprint. A
+# workflow_dispatch of this trigger still starts a nightly here by hand.
+#
+# COST: one ubuntu-24.04-arm job of ~15 s per push to a long-lived branch (1 billed minute, $0.005); no nightly job.
 name: Test batch trigger
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "41 1 * * *"
   workflow_dispatch:
 
 permissions:
