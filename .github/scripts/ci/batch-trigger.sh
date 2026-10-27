@@ -15,11 +15,30 @@
 #
 # The test set (tests.yml) runs:
 #   - every CI_BATCH_SIZE merges (org variable, default 10) per long-lived branch that are `affected` or unmarked:
-#     THIS script, on every push (a promotion merge counts when ANY change it carries is affected or unmarked). Since
-#     2026-10-23 (operator decision, GitHub Actions cost) the batch runs mode AFFECTED against the last tested sha
+#     THIS script, on every push (in a repo with a dev branch a promotion of dev's exact tree counts nothing on master,
+#     below; with no dev branch it counts when ANY change it carries is affected or unmarked). Since
+#     2026-10-23 (operator decision, GitHub Actions cost) the batch runs mode AFFECTED against the last PASSED sha
 #     (`base`), reason `batch-affected`: typecheck, lint and only the tests those merges can reach (tests.yml widens
-#     to the whole suite by its own rules: dependencies, config, test setup, CI). When there is no tested sha to
-#     measure from (nothing tested yet, history rewritten) the batch is FULL, reason `batch`;
+#     to the whole suite by its own rules: dependencies, config, test setup, CI). When
+#     there is no passed sha to measure from (nothing tested yet, history rewritten) the batch is FULL, reason `batch`;
+#     TIME WINDOW (T-10194, 2026-10-24): a due batch is dispatched only when the newest batch on the branch started
+#     CI_BATCH_MIN_INTERVAL_MIN minutes ago or more (default 60; 0 = no window), or when CI_BATCH_MAX (default 32, the
+#     bisect's own BISECT_MAX_MERGES) merges are waiting. Under it the batch count follows the clock, not the PR count:
+#     at most 24 a day per branch (more only past CI_BATCH_MAX merges an hour), each AFFECTED from the last passed sha,
+#     so its tests follow what the merges changed. A batch deferred by the window goes with the next push after it, or
+#     the nightly. Low traffic is unchanged: ten merges an hour apart or more dispatch exactly as before. CI_BATCH_MAX
+#     counts every first-parent merge waiting, local and skip included (the bisect's cap counts them all), and it also
+#     dispatches the batch when it is reached with fewer than CI_BATCH_SIZE counted merges (one or more), so a stretch of
+#     local merges cannot grow a batch past the range the bisect can walk. The count
+#     starts at the newest tested sha on the branch's FIRST-PARENT line; the AFFECTED `base` is the newest PASSED
+#     `(batch)`, `(batch-affected)` or `(nightly)` run on that line (none: the batch is FULL). T-10194 review;
+#   - a PROMOTION on master (a merge whose merged side is on dev and whose tree is exactly that side's, whatever its
+#     subject), or a master commit on dev, counts toward no master batch when the repo has a dev branch, and a push of
+#     one counts nothing (T-10194): every change it carries was counted, and batched, on dev. A change that lands on
+#     master directly (a hotfix), or a merge with code of its own (a conflict fix), counts there. The nightly still
+#     tests master when its tree differs from dev's. The merged side must be on dev's own FIRST-PARENT line (a dev tip,
+#     as a promotion carries): a hotfix branch merged into dev first sits on a merged side there, so its merge into an
+#     unmoved master (same tree as the hotfix) still counts on master (T-10194 review 2);
 #   - ONCE a night per repo, FULL, the single safety net for cross-change breaks, and only when the branch moved
 #     (since the last FULL run; an AFFECTED batch does not count as having tested the head): THIS
 #     script, on the schedule. A repo with a dev branch tests dev; master only when its tree differs from dev's
@@ -31,7 +50,7 @@
 #
 # Needs: a checkout with first-parent history (fetch-depth 0, filter blob:none), GH_TOKEN with actions:write and
 # pull-requests:read. Env: GITHUB_REPOSITORY, GITHUB_EVENT_NAME, GITHUB_REF_NAME, GITHUB_SHA (set by Actions),
-# CI_BATCH_SIZE, TESTS_WORKFLOW (default tests.yml), BATCH_BRANCHES (default "master dev main" plus the repo's
+# CI_BATCH_SIZE, CI_BATCH_MIN_INTERVAL_MIN (default 60), CI_BATCH_MAX (default 32), TESTS_WORKFLOW (default tests.yml), BATCH_BRANCHES (default "master dev main" plus the repo's
 # default branch; set, it is taken as listed). A branch the repo does not have is skipped with a line; a repo with no
 # active TESTS_WORKFLOW dispatches nothing and ends green.
 # Self-test (no network): TRIGGER_SELFTEST=1 bash batch-trigger.sh <function> <args>.
@@ -42,6 +61,11 @@ WF="${TESTS_WORKFLOW:-tests.yml}"
 N="${CI_BATCH_SIZE:-10}"
 case "$N" in ''|*[!0-9]*) N=10 ;; esac
 [ "$N" -ge 1 ] || N=10
+WINDOW="${CI_BATCH_MIN_INTERVAL_MIN:-60}"   # minutes between two batches on one branch; 0 = no window (the old rule)
+case "$WINDOW" in ''|*[!0-9]*) WINDOW=60 ;; esac
+MAXB="${CI_BATCH_MAX:-32}"                  # this many waiting merges dispatch a batch inside the window
+case "$MAXB" in ''|*[!0-9]*) MAXB=32 ;; esac
+[ "$MAXB" -ge "$N" ] || MAXB="$N"
 EVENT="${GITHUB_EVENT_NAME:-}"
 BRANCHES="${BATCH_BRANCHES:-master dev main}"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
@@ -66,17 +90,79 @@ branch_head() {
   grep -xE '[0-9a-f]{40}' <<<"$out" || true
 }
 
-# The sha the newest run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"); a cancelled run
-# tested nothing. A per-merge `affected` run tested only part of the tree, so it never moves the batch baseline. A
-# `batch-affected` run (the every-10-merges batch since 2026-10-23, mode AFFECTED) is the baseline of the NEXT batch (it
-# measured its merges), but it did not test the whole tree: `strict` (the nightly) takes only a `(batch)` or `(nightly)` run (an allowlist: `(requested)` may be mode NONE, `(on-demand)` any mode), so the nightly stays a FULL
-# run of any head no FULL run has tested.
-last_tested() { # <branch> [strict]
-  local partial='\\(affected\\)$' only='.'
-  [ "${2:-}" != strict ] || { partial='^$'; only='\\((batch|nightly)\\)$'; }
+# The sha the newest run of tests.yml on <branch> tested (its run-name is "Tests <sha> (<reason>)"). A per-merge
+# `affected` run tested only part of the tree, so it never moves the batch baseline. A `batch-affected` run (the
+# every-10-merges batch since 2026-10-23, mode AFFECTED) is the baseline of the NEXT batch (it measured its merges),
+# but it did not test the whole tree: `strict` (the nightly) takes only a `(batch)` or `(nightly)` run (an allowlist: `(requested)` may be mode NONE, `(on-demand)` any mode), so the nightly stays a FULL run of any head
+# no FULL run has tested. A CANCELLED run counts as tested when it ran
+# for CANCELLED_TESTED_AFTER_MIN minutes or more (default 5): a shard that hits its timeout-minutes ends the whole run
+# `cancelled` after the full wait, the tests did run, and a re-run of the same sha times out the same way. Treating that
+# run as untested made every later push send another FULL batch (front-end, 22 Oct 2026: 11 and 13 timed-out batches in a
+# row on dev and master). A run cancelled sooner (superseded by a newer dispatch of the same sha, or stopped by hand in
+# the first minutes) tested nothing and still does not count. `strict` (the nightly) keeps the old rule:
+# every cancelled run is ignored.
+# tested_shas lists every such sha, newest first; last_tested is the newest. The sha a run tested is the LEADING
+# `Tests <sha>` of its run-name and nothing else in it: a free-text reason that names another sha ("rerun, compare
+# <sha>") does not make that sha tested (T-10194 review). The batch (push path) counts from the newest one ON THE
+# BRANCH'S FIRST-PARENT LINE (on_first_parent_line): a hand dispatch on the branch that tested a PR head with a
+# free-text reason (loop run 40046315844, "affected rerun after loop#2913 heap fix", 2026-10-24) used to become the
+# baseline, was no ancestor, and made the next batch FULL with no base (run 40048722679, ~127 billed minutes instead of
+# ~40). T-10194.
+tested_shas() { # <branch> [strict]
+  local min="${CANCELLED_TESTED_AFTER_MIN:-5}" cancelled_ok=1 partial='\\(affected\\)$' only='.'
+  case "$min" in ''|*[!0-9]*) min=5 ;; esac
+  if [ "${2:-}" = strict ]; then cancelled_ok=0; partial='^$'; only='\\((batch|nightly)\\)$'; fi
   gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$1&event=workflow_dispatch&per_page=30" \
-    --jq ".workflow_runs[] | select(.conclusion != \"cancelled\") | .display_title | select(test(\"$only\") and (test(\"$partial\") | not))" 2>/dev/null \
-    | grep -oE '[0-9a-f]{40}' | head -1 || true
+    --jq ".workflow_runs[] | select(.conclusion != \"cancelled\" or ($cancelled_ok == 1 and (try ((.updated_at | fromdateiso8601) - (.run_started_at | fromdateiso8601)) catch 0) >= $min * 60)) | .display_title | select(test(\"$only\") and (test(\"$partial\") | not))" 2>/dev/null \
+    | sed -nE 's/^Tests ([0-9a-f]{40})( .*)?$/\1/p' || true
+}
+last_tested() { # <branch> [strict]
+  tested_shas "$@" | head -1 || true
+}
+# 0 when <sha> is on <head>'s first-parent line (the branch's own merges): <head> itself, or the commit the first-parent
+# walk from <head> stops at. An ancestor on a merged side (a PR head merged with --no-ff, a dev commit a promotion
+# carried) is not: `git rev-list --first-parent <sha>..<head>` walks past it to the fork point, so the count and the
+# AFFECTED range would take in merges that are not the batch's (T-10194 review).
+on_first_parent_line() { # <commit-ish> <head>
+  local sha oldest
+  sha="$(git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null)" || return 1
+  if [ "$sha" = "$(git rev-parse --verify --quiet "$2^{commit}" 2>/dev/null)" ]; then return 0; fi
+  git merge-base --is-ancestor "$sha" "$2" 2>/dev/null || return 1
+  oldest="$(git rev-list --first-parent "$sha..$2" | tail -1)"
+  [ -n "$oldest" ] && [ "$(git rev-parse --verify --quiet "$oldest^1" 2>/dev/null)" = "$sha" ]
+}
+# The newest tested sha on <head>'s first-parent line (empty: none). The COUNT starts here: a red or timed-out batch
+# measured its merges, so the next push does not send another batch at once.
+last_tested_on_line() { # <branch> <head>
+  local s
+  for s in $(tested_shas "$1"); do
+    if on_first_parent_line "$s" "$2"; then echo "$s"; return 0; fi
+  done
+}
+# The AFFECTED batch's `base` (T-10194 review): the newest PASSED `(batch)`, `(batch-affected)` or `(nightly)` run on
+# <branch> whose sha is on <head>'s first-parent line (empty: none, and the batch is FULL). Tested is not passed: from a
+# red or timed-out batch the next batch would skip what that one failed or never reached. A `(requested)` run may be
+# ci-label.yml's mode NONE, an `(on-demand)` one any mode, an `(affected)` one a single change: none of them is a base.
+passed_base_on_line() { # <branch> <head>
+  local s
+  for s in $(gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$1&event=workflow_dispatch&status=success&per_page=100" \
+      --jq '.workflow_runs[] | select(.conclusion == "success") | .display_title | select(test("\\((batch|batch-affected|nightly)\\)$"))' 2>/dev/null \
+      | sed -nE 's/^Tests ([0-9a-f]{40}) .*$/\1/p' || true); do
+    if on_first_parent_line "$s" "$2"; then echo "$s"; return 0; fi
+  done
+}
+
+# Minutes since the newest batch (`(batch)` or `(batch-affected)`, any conclusion) on <branch> was dispatched; empty
+# when there is none or GitHub cannot be read (no window then: the batch goes, the old rule). BATCH_NOW (epoch seconds)
+# stands in for the clock in the self-test.
+last_batch_age_min() { # <branch>
+  local created now ts
+  created="$(gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$1&event=workflow_dispatch&per_page=100" \
+    --jq '[.workflow_runs[] | select((.display_title // "") | test("\\((batch|batch-affected)\\)$"))][0].created_at // empty' 2>/dev/null)" || return 0
+  [ -n "$created" ] || return 0
+  ts="$(date -u -d "$created" +%s 2>/dev/null)" || return 0
+  now="${BATCH_NOW:-$(date -u +%s)}"
+  echo $(( (now - ts) / 60 ))
 }
 
 dispatch() { # <branch> <sha> <reason> [mode] [base]; a ref GitHub does not know is skipped with a line, any other failure is status 1
@@ -136,11 +222,37 @@ choice_of() { # <sha> [lookup=yes|no]
   return 0
 }
 
-# Does the first-parent commit <c> count toward a batch? 0 = yes. local and skip do not. A promotion merge
-# (dev -> master, a MERGE commit) counts when ANY commit it carries is affected or unmarked.
+# 0 when <c> is a promotion merge by name (a merge commit whose subject names promote/dev-to-master). Only reached for a
+# repo with no dev branch, or on a branch other than master, or for a promotion dev_counted did not take (a conflict
+# fix of its own): `counts` then asks each change it carries.
+is_promotion() { # <c>
+  [ "$(git rev-list --parents -n1 "$1" | wc -w)" -ge 3 ] && git log -1 --format=%s "$1" | grep -qi 'promote/dev-to-master'
+}
+# 0 when <c>, on master, holds no code dev's own count did not already take (T-10194): the repo has a dev branch (this
+# checkout holds origin/dev; fetch-depth 0 fetches every branch) and <c> is a commit already on dev (a fast-forward
+# promotion, or a hotfix dev took in by its back-merge) or a MERGE whose merged side is on dev: a promotion, whatever its
+# subject ("Merge pull request #N from tapperai/promote/dev-to-master" in most repos, "... from tapperai/dev" in back-end).
+# A hotfix (a direct commit, or the merge of a branch dev does not hold) is 1, and so is anything with no dev ref.
+# The MERGE also needs EXACTLY its merged side's tree (T-10194 review): a promotion with a conflict fix of its own, or a
+# hotfix branch merged into dev first and then into a master that has moved, holds code no dev batch tested, so it is 1.
+# The merged side must also be on dev's FIRST-PARENT line (T-10194 review 2): a promotion carries a dev tip, but a hotfix
+# branch merged into dev with a merge commit is only on a merged side there, and merged into an UNMOVED master it has
+# exactly its own tree, so the tree test alone took a hotfix that dev's first-parent count never held.
+dev_counted() { # <c>
+  [ "${BRANCH:-}" = master ] || return 1
+  git rev-parse -q --verify "refs/remotes/origin/dev^{commit}" >/dev/null || return 1
+  git merge-base --is-ancestor "$1" refs/remotes/origin/dev 2>/dev/null && return 0
+  [ "$(git rev-list --parents -n1 "$1" | wc -w)" -ge 3 ] || return 1
+  on_first_parent_line "$1^2" refs/remotes/origin/dev || return 1
+  [ "$(git rev-parse "$1^{tree}" 2>/dev/null || echo a)" = "$(git rev-parse "$1^2^{tree}" 2>/dev/null || echo b)" ]
+}
+
+# Does the first-parent commit <c> count toward a batch? 0 = yes. local and skip do not. A promotion merge counts
+# when ANY commit it carries is affected or unmarked, unless dev_counted took it (a repo with dev: dev counted it).
 counts() { # <sha>
   local c="$1" s
-  if [ "$(git rev-list --parents -n1 "$c" | wc -w)" -ge 3 ] && git log -1 --format=%s "$c" | grep -qi 'promote/dev-to-master'; then
+  if dev_counted "$c"; then return 1; fi
+  if is_promotion "$c"; then
     for s in $(git rev-list --no-merges "$c^1..$c^2"); do
       choice_of "$s" no
       case "$CHOICE" in local|skip) ;; *) return 0 ;; esac
@@ -203,26 +315,46 @@ if [ "$EVENT" = "push" ]; then
       dispatch "$BRANCH" "$HEAD" "affected" AFFECTED
     fi
   fi
-  last="$(last_tested "$BRANCH")"
-  measurable=0   # 1 = there is a tested sha to measure the batch from, so the batch can run AFFECTED
-  if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null && git merge-base --is-ancestor "$last" "$HEAD"; then
-    measurable=1
+  # A promotion (or any commit already on dev) pushed to master: dev counted, batched and bisects the changes it
+  # carries, so there is nothing to count here and no baseline to look up (T-10194). A hotfix to master goes on below.
+  if dev_counted "$HEAD"; then
+    say "$BRANCH: ${HEAD:0:12} holds only changes dev already counted (a promotion, or a commit on dev); dev's batches test them. Nothing counted here."
+    exit 0
+  fi
+  # The count starts at the newest TESTED sha on the branch's first-parent line; the AFFECTED batch is measured from the
+  # newest PASSED batch, batch-affected or nightly run on it (`base`; none = the batch is FULL). T-10194 review.
+  last="$(last_tested_on_line "$BRANCH" "$HEAD")"
+  base="$(passed_base_on_line "$BRANCH" "$HEAD")"
+  [ -n "$last" ] || last="$base"   # a passed run older than the tested_shas page is still somewhere to count from
+  if [ -n "$last" ]; then
     count="$(count_unmarked_or_affected "$last" "$HEAD")"
     total="$(git rev-list --first-parent --count "$last..$HEAD")"
   else
     count="$N"; total="$N"   # nothing tested yet on this branch (or history rewritten): start a batch now, FULL
   fi
-  say "$BRANCH: $count merge(s) to test since the last tested commit ${last:0:12} ($total merged, the rest chose local or skip; batch size $N)."
-  if [ "$count" -ge "$N" ]; then
+  say "$BRANCH: $count merge(s) to test since the last tested commit ${last:0:12} ($total merged, the rest chose local or skip; batch size $N; last passed batch or nightly ${base:0:12})."
+  # The bypass counts EVERY first-parent merge waiting (`total`, local and skip included): the bisect caps its range at
+  # BISECT_MAX_MERGES first-parent merges whatever each chose, so past it a batch's own culprit would be cut off and
+  # labelled PRE_EXISTING (T-10194 review). The same cap makes a batch due on its own: CI_BATCH_MAX merges of any choice
+  # waiting with at least ONE counted (31 local merges and 9 counted dispatched nothing, and the next batch's range ran
+  # past the cap; T-10194 review 2). With none counted there is nothing for a batch to test.
+  if [ "$count" -ge "$N" ] && [ "$WINDOW" -gt 0 ] && [ "$total" -lt "$MAXB" ]; then
+    age="$(last_batch_age_min "$BRANCH")"
+    if [ -n "$age" ] && [ "$age" -lt "$WINDOW" ]; then
+      say "$BRANCH: batch due, but the last batch started ${age} min ago (window ${WINDOW} min, CI_BATCH_MIN_INTERVAL_MIN): deferred to the next push after the window, at once when ${MAXB} merges of any choice wait (CI_BATCH_MAX); the nightly covers a branch that goes quiet."
+      exit 0
+    fi
+  fi
+  if [ "$count" -ge "$N" ] || { [ "$count" -ge 1 ] && [ "$total" -ge "$MAXB" ]; }; then
     # The batch tests what its merges can reach (operator decision 2026-10-23); the nightly FULL run covers the rest.
-    if [ "$measurable" = 1 ]; then dispatch "$BRANCH" "$HEAD" "batch-affected" AFFECTED "$last"
+    if [ -n "$base" ]; then dispatch "$BRANCH" "$HEAD" "batch-affected" AFFECTED "$base"
     else dispatch "$BRANCH" "$HEAD" "batch" FULL; fi
   fi
   exit 0
 fi
 
 # schedule / workflow_dispatch of this trigger: THE nightly run, one per repo, only when the branch moved. With
-# BATCH_BRANCHES unset the repo's default branch is always a candidate (tracking-script's is main, tracker-protos' dev).
+# BATCH_BRANCHES unset the repo's default branch is always a candidate (tracking-script's is main, tracker-schema' dev).
 if [ -z "${BATCH_BRANCHES:-}" ]; then BRANCHES="$(gh api "repos/$REPO" --jq .default_branch) $BRANCHES"; fi
 seen=" "; failed=""; have=""
 for b in $BRANCHES; do

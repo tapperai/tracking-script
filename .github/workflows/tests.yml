@@ -133,8 +133,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
           BAD: ${{ inputs.sha || github.sha }}
-          CI_BATCH_SIZE: ${{ vars.CI_BATCH_SIZE || '10' }}
+          # A batch-affected run was measured from `base`, a PASSED sha on the branch (batch-trigger.sh): that is its good end,
+          # not the newest green run of any reason (T-10194 review 2). Any other run: batch-bisect.sh looks one up.
+          GOOD: ${{ inputs.reason == 'batch-affected' && inputs.base || '' }}
           GOOD_FULL_ONLY: ${{ inputs.reason == 'nightly' && '1' || '' }}
+          # The bisect walks at most the trigger's CI_BATCH_MAX merges (32, test-batch.yml), and ends inside this job's 30
+          # minutes with a result that says how far it got (T-8838).
+          BISECT_MAX_MERGES: "32"
+          BISECT_BUDGET_MINUTES: "25"
           BISECT_CMD: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml && node scripts/run_template_tests.mjs template.tpl
         run: bash .github/scripts/ci/batch-bisect.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
