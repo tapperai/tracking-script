@@ -1,9 +1,14 @@
 # Test batch trigger (CI standard 2026-10-17; root CLAUDE.md "GitHub Actions cost" rule 7).
 #
-# Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts tests.yml in mode AFFECTED (since 2026-10-23,
-# against the last tested sha) every CI_BATCH_SIZE merges (org variable, default 10) on each long-lived branch, nightly (FULL) for any branch
-# head not yet tested, and at once for a merge labelled `ci:run-tests` or a commit with the trailer `Tests: run`.
-# Logic and the skip record: .github/scripts/ci/batch-trigger.sh.
+# Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts the tests
+# (tests.yml) every CI_BATCH_SIZE merges (org variable, default 10) on each long-lived branch, in mode AFFECTED from the
+# last passed batch or nightly sha (operator decision 2026-10-23; FULL only when there is none), the FULL nightly for any branch
+# head no FULL run has tested, and the FULL set at once for a merge labelled `ci:run-tests` or a commit with the trailer
+# `Tests: run`.
+# TIME WINDOW (T-10194, 2026-10-24): a due batch waits until the newest batch on the branch is CI_BATCH_MIN_INTERVAL_MIN
+# (org variable, default 60) minutes old, unless CI_BATCH_MAX (default 32) merges of any choice are waiting (with one counted, that many also make a batch due), so batches follow the clock
+# and what changed, not the PR count. A dev -> master promotion of dev's exact tree counts toward no master batch in a repo with dev.
+# Logic and the skip record: .github/scripts/ci/batch-trigger.sh; its local test: .github/scripts/ci/batch-trigger.test.sh.
 #
 # COST: one ubuntu-24.04-arm job of ~15 s per push to a long-lived branch (1 billed minute, $0.005) plus one a night.
 name: Test batch trigger
@@ -40,5 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_BATCH_SIZE: ${{ vars.CI_BATCH_SIZE || '10' }}
+          CI_BATCH_MIN_INTERVAL_MIN: ${{ vars.CI_BATCH_MIN_INTERVAL_MIN || '60' }}
+          CI_BATCH_MAX: ${{ vars.CI_BATCH_MAX || '32' }}
           TESTS_WORKFLOW: tests.yml
         run: bash .github/scripts/ci/batch-trigger.sh
