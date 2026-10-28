@@ -1,0 +1,61 @@
+{
+  "_doc": "Encoded copy of design-system scripts/leak-guard/leak-denylist.json (base64 so a public repo does not publish the names it forbids). Never edit by hand: regenerate with --emit-enc in design-system and vendor it.",
+  "rules": [
+    {
+      "id": "gcp-project-prod",
+      "b64": "KD88IVtBLVphLXowLTlfLV0paXRsaW5rcy10byg/IVtBLVphLXowLTlfLV0p"
+    },
+    {
+      "id": "gcp-project-dev",
+      "b64": "KD88IVtBLVphLXowLTlfLV0pdGFwcGVyLWFpLWRldig/IVtBLVphLXowLTlfLV0p"
+    },
+    {
+      "id": "gcp-project-firebase",
+      "b64": "KD88IVtBLVphLXowLTlfLV0pdGFwcGVyLTg4NzM1KD8hW0EtWmEtejAtOV8tXSk="
+    },
+    {
+      "id": "gcp-service-account",
+      "b64": "aWFtXC5nc2VydmljZWFjY291bnRcLmNvbQ=="
+    },
+    {
+      "id": "gcp-billing-account",
+      "b64": "MDFGQjdBLTUyMjY1Mi04MjE5NzE="
+    },
+    {
+      "id": "gcp-organization",
+      "b64": "KD88IVswLTldKTQ4MjE3ODYxODkzOSg/IVswLTldKQ=="
+    },
+    {
+      "id": "data-instance-bigtable",
+      "b64": "KD88IVtBLVphLXowLTlfLV0pdHJhY2tlci1wcm9kKD8hW0EtWmEtejAtOV8tXSk="
+    },
+    {
+      "id": "data-instance-redis",
+      "b64": "KD88IVtBLVphLXowLTlfLV0paXBmLXNpZGVjYXIoPyFbQS1aYS16MC05Xy1dKQ=="
+    },
+    {
+      "id": "data-instance-sql",
+      "b64": "KD88IVtBLVphLXowLTlfLV0pKGxvb3B8Zm9yZ2UpLXBnKD8hW0EtWmEtejAtOV8tXSk="
+    },
+    {
+      "id": "vm-name",
+      "b64": "KD88IVtBLVphLXowLTlfLV0pKGxvb3AtcHJvZHxmb3JnZS1wcm9kfGZvcmdlLWRldnxyYWJiaXRtcS1wcm9kLXZtfG1sLWNyb24tam9icy1ldXcxfGZpbmdlcnByaW50LXNlcnZpY2Utdm0oLTIpPykoPyFbQS1aYS16MC05Xy1dKQ=="
+    },
+    {
+      "id": "gke-cluster",
+      "b64": "dGFwcGVyLShiZWxnaXVtLWdrZS1wMTMyfGdrZS1iZWxnaXVtLWQxMzIp"
+    },
+    {
+      "id": "internal-package",
+      "b64": "QHRhcHBlcmFpL2ludGVybmFsKD8hW0EtWmEtejAtOV8tXSk="
+    },
+    {
+      "id": "private-key",
+      "b64": "LS0tLS1CRUdJTiBbQS1aIF0qUFJJVkFURSBLRVktLS0tLQ=="
+    },
+    {
+      "id": "github-token",
+      "b64": "KGdocF9bQS1aYS16MC05XXszMCx9fGdpdGh1Yl9wYXRfW0EtWmEtejAtOV9dezQwLH0p"
+    }
+  ]
+}

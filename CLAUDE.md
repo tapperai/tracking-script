@@ -29,3 +29,5 @@ Copy SELLS: confident and plain; no "not available / planned / next / yet" discl
 Rule: skill `docs-rule`. This repo's pages are still in the old layout: `docs/tracking-script/SPEC.md` (template, permissions, release), `TESTING.md` (validator, `___TESTS___`, manual GTM Preview check), `ENVIRONMENT_SPINUP.md` (CI and Gallery mechanics). New choices go in `docs/decisions/NNNN-title.md`.
 
 `docs/BACKLOG.md` is the living list of asks: capture a new ask BEFORE starting; when it ships move it under `## Done` with a one-line note and date; unverified code goes under `## P0 - needs verification`.
+
+- **Leak guard (2026-10-28):** this repo is PUBLIC. `scripts/leak-guard/` is a byte-identical copy of the design-system canon; `tests.yml` runs it over the checkout with `--redact` (the match never reaches this public log) inside the required validation job. Never put an internal hostname, project id or instance name in a file, a commit message, a PR or an issue here.

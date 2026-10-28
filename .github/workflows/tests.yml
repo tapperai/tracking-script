@@ -95,6 +95,12 @@ jobs:
         run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
       - name: Run the ___TESTS___ scenarios (GTM permission semantics)
         run: node scripts/run_template_tests.mjs template.tpl
+      # LEAK GUARD (2026-10-28): this repo is PUBLIC, so nothing in it may carry an internal name (project ids,
+      # instance names, a tapper.ai host that is not on the public list). Plain node over the checkout, about a second,
+      # inside this already-required job (no new workflow, no new billed minute). --redact keeps the matched text out of
+      # this public log. Canon of the script and its lists: design-system scripts/leak-guard.
+      - name: Leak guard (public repo, no internal name)
+        run: node scripts/leak-guard/leak-guard.mjs --redact .
       - name: test-changed selection (node --test)
         run: node --test scripts/test-changed.test.mjs
 
