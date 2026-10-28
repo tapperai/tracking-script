@@ -1,0 +1,17 @@
+{
+  "_doc": "CANON of the leak guard's allowlist (design-system scripts/leak-guard): the tapper.ai hosts that are intentionally public. Any other host under tapper.ai found in a public build or a public repo is a hit. `subdomains: true` also allows every host below it. A repo that serves one more public host adds it to its own scripts/leak-guard/leak-allow.local.json (same shape), never here without the same reasoning.",
+  "hosts": [
+    { "host": "tapper.ai", "subdomains": false },
+    { "host": "www.tapper.ai", "subdomains": false },
+    { "host": "app.tapper.ai", "subdomains": false },
+    { "host": "api.tapper.ai", "subdomains": false },
+    { "host": "monitor.tapper.ai", "subdomains": false },
+    { "host": "protect.tapper.ai", "subdomains": false },
+    { "host": "support.tapper.ai", "subdomains": false },
+    { "host": "docs.tapper.ai", "subdomains": false },
+    { "host": "pay.tapper.ai", "subdomains": false },
+    { "host": "fingerprint.tapper.ai", "subdomains": false },
+    { "host": "lift.tapper.ai", "subdomains": true },
+    { "host": "partner.tapper.ai", "subdomains": false }
+  ]
+}
