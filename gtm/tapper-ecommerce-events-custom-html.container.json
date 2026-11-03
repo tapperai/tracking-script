@@ -1,0 +1,301 @@
+{
+  "exportFormatVersion": 2,
+  "exportTime": "2026-11-03 00:00:00",
+  "containerVersion": {
+    "path": "accounts/0/containers/0/versions/0",
+    "accountId": "0",
+    "containerId": "0",
+    "containerVersionId": "0",
+    "container": {
+      "path": "accounts/0/containers/0",
+      "accountId": "0",
+      "containerId": "0",
+      "name": "Tapper e-commerce events (Custom HTML)",
+      "publicId": "GTM-XXXXXXX",
+      "usageContext": [
+        "WEB"
+      ],
+      "fingerprint": "0",
+      "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/0/containers/0/workspaces?apiLink=container"
+    },
+    "builtInVariable": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "type": "EVENT",
+        "name": "Event"
+      }
+    ],
+    "tag": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "tagId": "1",
+        "fingerprint": "0",
+        "firingTriggerId": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8"
+        ],
+        "tagFiringOption": "ONCE_PER_EVENT",
+        "monitoringMetadata": {
+          "type": "MAP"
+        },
+        "consentSettings": {
+          "consentStatus": "NOT_SET"
+        },
+        "name": "Tapper - E-commerce events (Custom HTML)",
+        "type": "html",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "html",
+            "value": "<script>\n/* Tapper - E-commerce events (Custom HTML).\n   Trigger: Custom Event on view_item, view_item_list, add_to_cart, remove_from_cart, view_cart, begin_checkout,\n   add_payment_info and purchase. Needs the Tapper monitoring tag on All Pages, and two GTM variables:\n   the built-in \"Event\" and a Data Layer Variable named \"DLV - ecommerce\" (Data Layer Variable Name: ecommerce, version 2).\n   It only READS what GTM already holds; it never touches dataLayer.push. */\n(function () {\n  var RECORD_PURCHASE = true;        // false: only send the event (you keep the Tapper conversion tag for purchases)\n  var CUSTOMER_EMAIL = '';           // optional, purchase only: a variable such as {{Customer email}}; plain or SHA-256 (64 hex)\n  var CUSTOMER_PHONE = '';           // optional, purchase only: {{Customer phone}}, +international format or SHA-256 (64 hex)\n\n  var EVENTS = { view_item: 1, view_item_list: 1, add_to_cart: 1, remove_from_cart: 1, view_cart: 1, search: 1, begin_checkout: 1, add_payment_info: 1, purchase: 1 };\n  var EVENT_KEYS = ['transaction_id', 'coupon', 'shipping', 'tax', 'payment_type', 'shipping_tier', 'item_list_id', 'item_list_name', 'promotion_id', 'promotion_name', 'creative_name', 'creative_slot', 'location_id'];\n  var ITEM_KEYS = ['item_id', 'item_name', 'item_brand', 'item_category', 'item_category2', 'item_category3', 'item_category4', 'item_category5', 'item_variant', 'price', 'quantity', 'discount', 'coupon', 'affiliation', 'index', 'item_list_id', 'item_list_name', 'location_id'];\n  var w = window;\n\n  var name = String({{Event}} || '').toLowerCase();\n  if (!EVENTS[name]) { return; }\n  var ec = {{DLV - ecommerce}};\n  if (!ec || typeof ec !== 'object') { ec = {}; }\n\n  function scalar(v) {\n    if (typeof v === 'string' && v !== '') { return v.length > 200 ? v.slice(0, 200) : v; }\n    if (typeof v === 'number' && v === v) { return v; }\n    return undefined;\n  }\n\n  var src = Object.prototype.toString.call(ec.items) === '[object Array]' ? ec.items : [];\n  var ids = [];\n  for (var i = 0; i < src.length && i < 200; i++) {\n    if (src[i] && typeof src[i] === 'object' && scalar(src[i].item_id) !== undefined) { ids.push(String(src[i].item_id)); }\n  }\n  var signature = String(ec.transaction_id || '') + '|' + String(ec.value || '') + '|' + ids.join(',');\n\n  // Google's rule: push \"ecommerce: null\" before every e-commerce event. If a page does not, the previous event's object is\n  // still in the data layer: an object identical to the previous, differently named event's belongs to that event, so it is ignored.\n  var state = (w.__tapperEcom = w.__tapperEcom || {});\n  if (signature !== '||' && state.signature === signature && state.event !== name) { ec = {}; }\n  state.event = name;\n  state.signature = signature;\n\n  var params = {};\n  var value = Number(ec.value);\n  var valueOk = ec.value !== '' && ec.value !== null && ec.value !== undefined && value === value && value >= 0 && value <= 9999999999;\n  var currency = typeof ec.currency === 'string' && ec.currency.length === 3 ? ec.currency : undefined;\n  if (valueOk && currency) { params.value = value; params.currency = currency; }\n  for (var k = 0; k < EVENT_KEYS.length; k++) {\n    var ev = scalar(ec[EVENT_KEYS[k]]);\n    if (ev !== undefined) { params[EVENT_KEYS[k]] = ev; }\n  }\n  var items = [];\n  var list = Object.prototype.toString.call(ec.items) === '[object Array]' ? ec.items : [];\n  for (var n = 0; n < list.length && n < 200; n++) {\n    if (!list[n] || typeof list[n] !== 'object') { continue; }\n    var item = {};\n    for (var m = 0; m < ITEM_KEYS.length; m++) {\n      var iv = scalar(list[n][ITEM_KEYS[m]]);\n      if (iv !== undefined) { item[ITEM_KEYS[m]] = iv; }\n    }\n    items.push(item);\n  }\n  if (items.length) { params.items = items; }\n\n  // One order is one purchase: an order id this browser already sent is skipped.\n  var orderId = name === 'purchase' && scalar(ec.transaction_id) !== undefined ? String(ec.transaction_id) : '';\n  var sent = [];\n  if (orderId) {\n    try { sent = JSON.parse(w.localStorage.getItem('tapper_ecom_orders') || '[]'); } catch (e) { sent = []; }\n    if (Object.prototype.toString.call(sent) !== '[object Array]') { sent = []; }\n    if (sent.indexOf(orderId) > -1) { return; }\n  }\n\n  // Before the Tapper script has loaded the page keeps the loader stub (an array); its buffer takes the call.\n  if (!w.tapper) { w.tapper = []; }\n  if (Object.prototype.toString.call(w.tapper) === '[object Array]' && !w.tapper.track) {\n    w.tapper.track = function (n, p) { w.tapper.push(['track', n, p]); };\n  }\n  if (typeof w.tapper.track === 'function') { w.tapper.track(name, params); }\n\n  if (name === 'purchase' && RECORD_PURCHASE) {\n    // Same arguments, same order as the Tapper conversion tag: push(value, currency, order id, extras, { email, phone }).\n    var userData = {};\n    if (typeof CUSTOMER_EMAIL === 'string' && CUSTOMER_EMAIL !== '') { userData.email = CUSTOMER_EMAIL; }\n    if (typeof CUSTOMER_PHONE === 'string' && CUSTOMER_PHONE !== '') { userData.phone = CUSTOMER_PHONE; }\n    var hasUserData = userData.email !== undefined || userData.phone !== undefined;\n    var amount = valueOk ? value : 0;\n    if (amount > 0) {\n      if (hasUserData) { w.tapper.push(amount, currency, orderId || undefined, undefined, userData); }\n      else { w.tapper.push(amount, currency, orderId || undefined); }\n    } else if (hasUserData) { w.tapper.push(1, undefined, undefined, undefined, userData); }\n    else { w.tapper.push(1); }\n  }\n\n  if (orderId) {\n    sent.push(orderId);\n    try { w.localStorage.setItem('tapper_ecom_orders', JSON.stringify(sent.length > 20 ? sent.slice(sent.length - 20) : sent)); } catch (e) { /* storage blocked */ }\n  }\n})();\n</script>"
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "supportDocumentWrite",
+            "value": "false"
+          }
+        ]
+      }
+    ],
+    "trigger": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "1",
+        "name": "Tapper - view_item",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "view_item"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "2",
+        "name": "Tapper - view_item_list",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "view_item_list"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "3",
+        "name": "Tapper - add_to_cart",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "add_to_cart"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "4",
+        "name": "Tapper - remove_from_cart",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "remove_from_cart"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "5",
+        "name": "Tapper - view_cart",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "view_cart"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "6",
+        "name": "Tapper - begin_checkout",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "begin_checkout"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "7",
+        "name": "Tapper - add_payment_info",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "add_payment_info"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "8",
+        "name": "Tapper - purchase",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "purchase"
+              }
+            ]
+          }
+        ],
+        "fingerprint": "0"
+      }
+    ],
+    "variable": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "1",
+        "name": "DLV - ecommerce",
+        "type": "v",
+        "parameter": [
+          {
+            "type": "INTEGER",
+            "key": "dataLayerVersion",
+            "value": "2"
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "setDefaultValue",
+            "value": "false"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "name",
+            "value": "ecommerce"
+          }
+        ],
+        "fingerprint": "0",
+        "formatValue": {}
+      }
+    ],
+    "fingerprint": "0",
+    "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/0/containers/0/versions/0?apiLink=version"
+  }
+}

@@ -68,6 +68,10 @@ REQUIRE_PERMISSION = {
     "makeString": None,
     "makeNumber": None,
     "getType": None,
+    "JSON": None,
+    "templateStorage": None,
+    "copyFromDataLayer": "read_data_layer",
+    "localStorage": "access_local_storage",
 }
 
 # window API -> the access_globals operation(s) GTM asserts on each path
@@ -168,6 +172,9 @@ def validate(content, label):
     granted_globals = {"read": set(), "write": set(), "execute": set()}
     granted_urls = []
     logging_envs = []
+    granted_layer_keys = []
+    granted_layer_any = False
+    granted_storage = {"read": set(), "write": set()}
     if "WEB_PERMISSIONS" in json_sections:
         for grant in json_sections["WEB_PERMISSIONS"]:
             pub = grant["instance"]["key"]["publicId"]
@@ -177,6 +184,22 @@ def validate(content, label):
                     granted_urls += [li.get("string") for li in p["value"].get("listItem", [])]
                 if pub == "logging" and p.get("key") == "environments":
                     logging_envs.append(p["value"].get("string"))
+            if pub == "read_data_layer":
+                for p in grant["instance"].get("param", []):
+                    if p.get("key") == "allowedKeys" and p["value"].get("string") == "any":
+                        granted_layer_any = True
+                    if p.get("key") == "keyPatterns":
+                        granted_layer_keys += [li.get("string") for li in p["value"].get("listItem", [])]
+            if pub == "access_local_storage":
+                for p in grant["instance"].get("param", []):
+                    if p.get("key") != "keys":
+                        continue
+                    for li in p["value"].get("listItem", []):
+                        mk = [k["string"] for k in li["mapKey"]]
+                        row = dict(zip(mk, [v.get("string", v.get("boolean")) for v in li["mapValue"]]))
+                        for op in ("read", "write"):
+                            if row.get(op) is True and "key" in row:
+                                granted_storage[op].add(row["key"])
             if pub == "access_globals":
                 for p in grant["instance"].get("param", []):
                     if p.get("key") != "keys":
@@ -216,6 +239,35 @@ def validate(content, label):
                 )
             else:
                 print(f"OK   {api}('{path}') -> access_globals {'+'.join(ops)} on '{path}' granted")
+
+    # 2b. data layer reads and local storage keys: exact literal keys, no more, no less.
+    used_layer = set()
+    for raw_args in re.findall(r"\bcopyFromDataLayer\s*\(([^)]*)\)", js):
+        m = STRING_ARG_RE.match(raw_args.split(",")[0])
+        if not m:
+            failures.append("copyFromDataLayer(...) argument 1 is not a string literal; its read_data_layer grant cannot be verified")
+            continue
+        used_layer.add(m.group(2))
+        if not granted_layer_any and m.group(2) not in granted_layer_keys:
+            failures.append(f"copyFromDataLayer('{m.group(2)}') needs read_data_layer on the exact key; granted: {sorted(granted_layer_keys) or 'nothing'}")
+    if "read_data_layer" in granted_perms and not granted_layer_any and set(granted_layer_keys) != used_layer:
+        failures.append(f"read_data_layer keys {sorted(granted_layer_keys)} must equal the literal keys copyFromDataLayer reads {sorted(used_layer)}")
+    if granted_layer_any:
+        failures.append("read_data_layer must not allow ANY key (least privilege): list the keys")
+    used_storage = {"read": set(), "write": set()}
+    for method, raw_args in re.findall(r"\blocalStorage\.(getItem|setItem|removeItem)\s*\(([^)]*)\)", js):
+        m = STRING_ARG_RE.match(raw_args.split(",")[0])
+        if not m:
+            failures.append(f"localStorage.{method}(...) argument 1 is not a string literal; its access_local_storage grant cannot be verified")
+            continue
+        op = "read" if method == "getItem" else "write"
+        used_storage[op].add(m.group(2))
+        if m.group(2) not in granted_storage[op]:
+            failures.append(f"localStorage.{method}('{m.group(2)}') needs access_local_storage {op} on that key")
+    if "access_local_storage" in granted_perms:
+        for op in ("read", "write"):
+            if granted_storage[op] != used_storage[op]:
+                failures.append(f"access_local_storage {op} keys {sorted(granted_storage[op])} must equal the literal keys the JS uses {sorted(used_storage[op])}")
 
     # 3. require()'d APIs have their permission.
     needed_perms = set()

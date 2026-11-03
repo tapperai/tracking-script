@@ -31,8 +31,26 @@ ___INFO___
 
 
 ___TEMPLATE_PARAMETERS___
-
 [
+  {
+    "type": "SELECT",
+    "name": "tagType",
+    "displayName": "What should this tag do?",
+    "macrosInSelect": false,
+    "selectItems": [
+      {
+        "value": "monitor",
+        "displayValue": "Start the Tapper monitoring script (trigger: All Pages)"
+      },
+      {
+        "value": "ecommerce",
+        "displayValue": "Send an e-commerce event (trigger: a Custom Event on a GA4 e-commerce event name)"
+      }
+    ],
+    "simpleValueType": true,
+    "defaultValue": "monitor",
+    "help": "Use one tag of the first kind on All Pages. Add one tag of the second kind, fired by Custom Event triggers on view_item, view_item_list, add_to_cart, remove_from_cart, view_cart, begin_checkout, add_payment_info and purchase, to send your store's GA4 e-commerce events to Tapper."
+  },
   {
     "type": "TEXT",
     "name": "pk",
@@ -51,27 +69,147 @@ ___TEMPLATE_PARAMETERS___
         "errorMessage": "Enter a valid Tapper Public Key (must start with \"pk_live_\" or \"pk_test_\")."
       }
     ]
+  },
+  {
+    "type": "SELECT",
+    "name": "ecommercePlatform",
+    "displayName": "E-commerce platform capture",
+    "macrosInSelect": false,
+    "selectItems": [
+      {
+        "value": "none",
+        "displayValue": "None (my store sends GA4 e-commerce events, or I send them myself)"
+      },
+      {
+        "value": "woocommerce",
+        "displayValue": "WooCommerce"
+      },
+      {
+        "value": "bigcommerce",
+        "displayValue": "BigCommerce"
+      },
+      {
+        "value": "salla",
+        "displayValue": "Salla"
+      },
+      {
+        "value": "zid",
+        "displayValue": "Zid"
+      }
+    ],
+    "simpleValueType": true,
+    "defaultValue": "none",
+    "enablingConditions": [
+      {
+        "paramName": "tagType",
+        "paramValue": "monitor",
+        "type": "EQUALS"
+      }
+    ],
+    "help": "Optional. Tells the Tapper script to read your store engine's own events. Do not combine it with the e-commerce event tag for the same events."
+  },
+  {
+    "type": "GROUP",
+    "name": "ecommerceGroup",
+    "displayName": "E-commerce event",
+    "groupStyle": "NO_ZIPPY",
+    "enablingConditions": [
+      {
+        "paramName": "tagType",
+        "paramValue": "ecommerce",
+        "type": "EQUALS"
+      }
+    ],
+    "subParams": [
+      {
+        "type": "TEXT",
+        "name": "eventName",
+        "displayName": "Event name (optional)",
+        "simpleValueType": true,
+        "help": "Leave empty: the tag reads the event name of the Custom Event trigger that fired it (view_item, add_to_cart, purchase, ...). Set it only to override."
+      },
+      {
+        "type": "CHECKBOX",
+        "name": "recordPurchase",
+        "checkboxText": "Record purchases as conversions",
+        "simpleValueType": true,
+        "defaultValue": true,
+        "help": "On (default): a purchase event also records the order as a Tapper conversion with its value, currency and order id, exactly like the Tapper conversion tag. Turn it off if you keep the Tapper conversion tag for purchases, so an order is never counted twice. An order id already sent from this browser is skipped either way."
+      },
+      {
+        "type": "TEXT",
+        "name": "email",
+        "displayName": "Customer email (optional, purchase only)",
+        "simpleValueType": true,
+        "help": "Map a variable holding the buyer's email, plain or already SHA-256 hashed (64 hex characters, e.g. a GA4 user_data / Enhanced Conversions variable). Plain values are hashed in the visitor's browser and only the hash is sent, only for a visitor whose consent allows it. Never sent with the event itself."
+      },
+      {
+        "type": "TEXT",
+        "name": "phone",
+        "displayName": "Customer phone (optional, purchase only)",
+        "simpleValueType": true,
+        "help": "Map a variable holding the buyer's phone in international format starting with + or 00, or an already SHA-256 hashed value (64 hex characters). Handled like the email."
+      },
+      {
+        "type": "SIMPLE_TABLE",
+        "name": "additionalFields",
+        "displayName": "Additional fields (optional, purchase conversion)",
+        "simpleTableColumns": [
+          {
+            "type": "TEXT",
+            "name": "name",
+            "displayName": "Name",
+            "isUnique": true
+          },
+          {
+            "type": "TEXT",
+            "name": "value",
+            "displayName": "Value",
+            "valueHint": "{{Your variable}}"
+          }
+        ],
+        "help": "Optional. Extra details sent with the purchase conversion, one row per field. Same rules as the Tapper conversion tag: a name starts with a letter, then letters, numbers or underscores."
+      }
+    ]
   }
 ]
-
-
 ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
-
 const injectScript = require('injectScript');
 const callInWindow = require('callInWindow');
+const copyFromWindow = require('copyFromWindow');
+const copyFromDataLayer = require('copyFromDataLayer');
 const logToConsole = require('logToConsole');
-
+const getType = require('getType');
+const makeNumber = require('makeNumber');
+const makeString = require('makeString');
+const JSON = require('JSON');
+const localStorage = require('localStorage');
+const templateStorage = require('templateStorage');
 const scriptUrl = 'https://monitor.tapper.ai/bundle.js';
 const pk = data.pk;
 
 if (!pk) {
   logToConsole('Tapper public key is missing');
   data.gtmOnFailure();
-} else {
+  return;
+}
+
+// ---------------------------------------------------------------------------
+// Tag type 1 (the default, and what every tag made before this option does):
+// load the monitoring script and start it. The optional E-commerce platform
+// becomes tapper.init's `ecommerce` option (WooCommerce, BigCommerce, Salla,
+// Zid, PrestaShop capture inside the script).
+// ---------------------------------------------------------------------------
+if (data.tagType !== 'ecommerce') {
+  const platform = data.ecommercePlatform;
   injectScript(
     scriptUrl,
     function () {
-      callInWindow('tapper.init', pk);
+      if (platform && platform !== 'none') {
+        callInWindow('tapper.init', pk, { ecommerce: platform });
+      } else {
+        callInWindow('tapper.init', pk);
+      }
       data.gtmOnSuccess();
     },
     function () {
@@ -80,11 +218,210 @@ if (!pk) {
     },
     'tapper-monitor-script'
   );
+  return;
 }
 
+// ---------------------------------------------------------------------------
+// Tag type 2: one e-commerce event. Fired by a Custom Event trigger on a GA4
+// e-commerce event name. It READS the event name and the `ecommerce` object at
+// fire time with copyFromDataLayer (read-only: the page's dataLayer.push is
+// never wrapped, replaced or called) and hands the values to tapper.track. On
+// `purchase` it also records the order as a conversion, exactly like the
+// Tapper conversion template (tapper.push(value, currency, order id, extras,
+// userData)). No personal data goes into tapper.track: the customer's e-mail and
+// phone travel only as the 5th argument of tapper.push, which hashes them in the
+// browser (or takes a 64-hex SHA-256 as it is).
+// ---------------------------------------------------------------------------
+const EVENTS = ['view_item', 'view_item_list', 'add_to_cart', 'remove_from_cart', 'view_cart', 'search', 'begin_checkout', 'add_payment_info', 'purchase'];
+const EVENT_KEYS = ['transaction_id', 'coupon', 'shipping', 'tax', 'payment_type', 'shipping_tier', 'item_list_id', 'item_list_name', 'promotion_id', 'promotion_name', 'creative_name', 'creative_slot', 'location_id'];
+const ITEM_KEYS = ['item_id', 'item_name', 'item_brand', 'item_category', 'item_category2', 'item_category3', 'item_category4', 'item_category5', 'item_variant', 'price', 'quantity', 'discount', 'coupon', 'affiliation', 'index', 'item_list_id', 'item_list_name', 'location_id'];
+const MAX_ITEMS = 200;
+const maxOrderValue = 9999999999;
 
+const rawName = data.eventName ? data.eventName : copyFromDataLayer('event');
+const eventName = getType(rawName) === 'string' ? rawName.toLowerCase() : '';
+if (EVENTS.indexOf(eventName) < 0) {
+  logToConsole('Tapper: "' + eventName + '" is not an e-commerce event the tag sends, skipping');
+  data.gtmOnSuccess();
+  return;
+}
+
+// A string or a number, or nothing. Objects, arrays and booleans never pass.
+function scalar(value) {
+  const type = getType(value);
+  if (type === 'string' && value !== '') {
+    return value.length > 200 ? value.slice(0, 200) : value;
+  }
+  if (type === 'number' && value === value) {
+    return value;
+  }
+  return undefined;
+}
+
+var ecommerce = copyFromDataLayer('ecommerce', 2);
+if (getType(ecommerce) !== 'object') {
+  ecommerce = {};
+}
+
+const sourceItems = getType(ecommerce.items) === 'array' ? ecommerce.items : [];
+const itemIds = [];
+for (var i = 0; i < sourceItems.length && i < MAX_ITEMS; i++) {
+  const item = sourceItems[i];
+  if (getType(item) === 'object' && scalar(item.item_id) !== undefined) {
+    itemIds.push(makeString(item.item_id));
+  }
+}
+const signature = makeString(ecommerce.transaction_id) + '|' + makeString(ecommerce.value) + '|' + itemIds.join(',');
+
+// Google's rule is to push `ecommerce: null` before every e-commerce event. A
+// page that does not leaves the PREVIOUS event's object in the data layer. An
+// object identical to the one the previous, differently named event used belongs
+// to that event, so it is ignored (the event is still sent, with its name only).
+const previousEvent = templateStorage.getItem('tapper_ecom_previous_event');
+const previousSignature = templateStorage.getItem('tapper_ecom_previous_signature');
+if (signature !== '||' && previousSignature === signature && previousEvent !== eventName) {
+  logToConsole('Tapper: the ecommerce object belongs to the previous event (push ecommerce: null before each event), sending "' + eventName + '" without it');
+  ecommerce = {};
+}
+templateStorage.setItem('tapper_ecom_previous_event', eventName);
+templateStorage.setItem('tapper_ecom_previous_signature', signature);
+
+const params = {};
+const value = makeNumber(ecommerce.value);
+const valueIsValid = value === value && value >= 0 && value <= maxOrderValue;
+const currency = getType(ecommerce.currency) === 'string' && ecommerce.currency.length === 3 ? ecommerce.currency : undefined;
+if (valueIsValid && currency) {
+  // the amount rides with its currency or not at all
+  params.value = value;
+  params.currency = currency;
+}
+for (var k = 0; k < EVENT_KEYS.length; k++) {
+  const v = scalar(ecommerce[EVENT_KEYS[k]]);
+  if (v !== undefined) {
+    params[EVENT_KEYS[k]] = v;
+  }
+}
+const items = [];
+const itemSource = getType(ecommerce.items) === 'array' ? ecommerce.items : [];
+for (var n = 0; n < itemSource.length && n < MAX_ITEMS; n++) {
+  const raw = itemSource[n];
+  if (getType(raw) !== 'object') {
+    continue;
+  }
+  const item = {};
+  for (var m = 0; m < ITEM_KEYS.length; m++) {
+    const iv = scalar(raw[ITEM_KEYS[m]]);
+    if (iv !== undefined) {
+      item[ITEM_KEYS[m]] = iv;
+    }
+  }
+  items.push(item);
+}
+if (items.length > 0) {
+  params.items = items;
+}
+
+// One order is one purchase: a transaction id this browser already sent is skipped
+// (a reloaded thank-you page, a second trigger).
+const transactionId = eventName === 'purchase' && scalar(ecommerce.transaction_id) !== undefined ? makeString(ecommerce.transaction_id) : '';
+var sentOrders = [];
+if (transactionId) {
+  const stored = localStorage.getItem('tapper_ecom_orders');
+  const parsed = getType(stored) === 'string' ? JSON.parse(stored) : undefined;
+  sentOrders = getType(parsed) === 'array' ? parsed : [];
+  if (sentOrders.indexOf(transactionId) > -1) {
+    logToConsole('Tapper: order ' + transactionId + ' was already sent, skipping');
+    data.gtmOnSuccess();
+    return;
+  }
+}
+
+// Extra details for the conversion: one row per field (the conversion template's own table and rules).
+const additionalFieldRows = getType(data.additionalFields) === 'array' ? data.additionalFields : [];
+const additionalFields = {};
+var additionalFieldCount = 0;
+for (var r = 0; r < additionalFieldRows.length; r++) {
+  const row = additionalFieldRows[r];
+  const fieldName = getType(row) === 'object' && row.name !== undefined && row.name !== null ? makeString(row.name) : '';
+  const fieldHasValue = getType(row) === 'object' && row.value !== undefined && row.value !== null && makeString(row.value) !== '';
+  if (fieldName !== '' && fieldHasValue) {
+    additionalFields[fieldName] = row.value;
+    additionalFieldCount++;
+  }
+}
+const hasAdditionalFields = additionalFieldCount > 0;
+
+// Customer identity: the plain (or already SHA-256 hashed) e-mail and phone go ONLY to
+// tapper.push, as its 5th argument; never into tapper.track.
+const userData = {};
+if (getType(data.email) === 'string' && data.email !== '') {
+  userData.email = data.email;
+}
+if (getType(data.phone) === 'string' && data.phone !== '') {
+  userData.phone = data.phone;
+}
+const hasUserData = userData.email !== undefined || userData.phone !== undefined;
+
+function sendEvent() {
+  if (getType(copyFromWindow('tapper')) === 'array') {
+    // Before the script has loaded the page keeps the loader stub; its buffer takes the call.
+    callInWindow('tapper.push', ['track', eventName, params]);
+  } else {
+    callInWindow('tapper.track', eventName, params);
+  }
+}
+
+// Same argument order and the same rules as the Tapper conversion template.
+function recordConversion() {
+  // The conversion takes the value even without a currency (the conversion template does: the ad account's currency is used).
+  const orderValue = valueIsValid ? value : 0;
+  const orderCurrency = currency;
+  if (orderValue > 0) {
+    if (hasUserData) {
+      callInWindow('tapper.push', orderValue, orderCurrency, transactionId || undefined, hasAdditionalFields ? additionalFields : undefined, userData);
+    } else if (hasAdditionalFields) {
+      callInWindow('tapper.push', orderValue, orderCurrency, transactionId || undefined, additionalFields);
+    } else {
+      callInWindow('tapper.push', orderValue, orderCurrency, transactionId || undefined);
+    }
+  } else if (hasUserData) {
+    callInWindow('tapper.push', 1, undefined, undefined, hasAdditionalFields ? additionalFields : undefined, userData);
+  } else if (hasAdditionalFields) {
+    callInWindow('tapper.push', 1, undefined, undefined, additionalFields);
+  } else {
+    callInWindow('tapper.push', 1);
+  }
+}
+
+function sendAll() {
+  sendEvent();
+  if (eventName === 'purchase' && data.recordPurchase !== false) {
+    recordConversion();
+  }
+  if (transactionId) {
+    sentOrders.push(transactionId);
+    localStorage.setItem('tapper_ecom_orders', JSON.stringify(sentOrders.length > 20 ? sentOrders.slice(sentOrders.length - 20) : sentOrders));
+  }
+  data.gtmOnSuccess();
+}
+
+if (copyFromWindow('tapper')) {
+  sendAll();
+} else {
+  injectScript(
+    scriptUrl,
+    function () {
+      callInWindow('tapper.init', pk);
+      sendAll();
+    },
+    function () {
+      logToConsole('Failed to load Tapper script');
+      data.gtmOnFailure();
+    },
+    'tapper-monitor-script'
+  );
+}
 ___WEB_PERMISSIONS___
-
 [
   {
     "instance": {
@@ -142,7 +479,124 @@ ___WEB_PERMISSIONS___
                 "mapValue": [
                   {
                     "type": 1,
+                    "string": "tapper"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
                     "string": "tapper.init"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "tapper.track"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "tapper.push"
                   },
                   {
                     "type": 8,
@@ -193,11 +647,100 @@ ___WEB_PERMISSIONS___
       "isEditedByUser": true
     },
     "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "read_data_layer",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "allowedKeys",
+          "value": {
+            "type": 1,
+            "string": "specific"
+          }
+        },
+        {
+          "key": "keyPatterns",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 1,
+                "string": "event"
+              },
+              {
+                "type": 1,
+                "string": "ecommerce"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "access_local_storage",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "keys",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "tapper_ecom_orders"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
   }
 ]
-
-
 ___TESTS___
+
 
 scenarios:
 - name: Loads the bundle and calls tapper.init with the Public Key
@@ -269,9 +812,466 @@ scenarios:
     assertThat(injectCalls).isStrictlyEqualTo(0);
     assertApi('gtmOnFailure').wasCalled();
     assertApi('gtmOnSuccess').wasNotCalled();
+- name: Monitoring tag with an E-commerce platform passes it to tapper.init
+  code: |-
+    mock('injectScript', (url, onSuccess) => { onSuccess(); });
+    runCode({ pk: 'pk_test_123456789', tagType: 'monitor', ecommercePlatform: 'woocommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.init', 'pk_test_123456789', { ecommerce: 'woocommerce' });
+    assertApi('gtmOnSuccess').wasCalled();
+- name: Monitoring tag with no E-commerce platform still calls tapper.init with the key only
+  code: |-
+    mock('injectScript', (url, onSuccess) => { onSuccess(); });
+    runCode({ pk: 'pk_test_123456789', tagType: 'monitor', ecommercePlatform: 'none' });
+    assertApi('callInWindow').wasCalledWith('tapper.init', 'pk_test_123456789');
+- name: E-commerce tag: add_to_cart reads the data layer at fire time and calls tapper.track with the full GA4 fields
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('add_to_cart', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'add_to_cart', trackedPurchase);
+    assertApi('callInWindow').wasNotCalledWith('tapper.push', 59.8, 'EUR', 'T-1001');
+    assertApi('gtmOnSuccess').wasCalled();
+- name: E-commerce tag: purchase calls tapper.track AND records the conversion like the conversion template
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'purchase', trackedPurchase);
+    assertApi('callInWindow').wasCalledWith('tapper.push', 59.8, 'EUR', 'T-1001');
+    assertApi('gtmOnSuccess').wasCalled();
+- name: E-commerce tag: extra fields and the customer's e-mail and phone go only as push arguments 4 and 5, never into tapper.track
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', purchase);
+    const hash = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true, email: 'ann@example.com', phone: hash,
+      additionalFields: [{ name: 'lead_type', value: 'shop' }, { name: 'empty', value: '' }] });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'purchase', trackedPurchase);
+    assertApi('callInWindow').wasCalledWith('tapper.push', 59.8, 'EUR', 'T-1001', { lead_type: 'shop' }, { email: 'ann@example.com', phone: hash });
+- name: E-commerce tag: the e-mail alone goes as the 5th argument with the 4th empty
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true, email: 'ann@example.com' });
+    assertApi('callInWindow').wasCalledWith('tapper.push', 59.8, 'EUR', 'T-1001', undefined, { email: 'ann@example.com' });
+- name: E-commerce tag: Record purchases as conversions OFF sends the event only
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: false, email: 'ann@example.com' });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'purchase', trackedPurchase);
+    assertApi('callInWindow').wasNotCalledWith('tapper.push', 59.8, 'EUR', 'T-1001', undefined, { email: 'ann@example.com' });
+    assertApi('callInWindow').wasNotCalledWith('tapper.push', 59.8, 'EUR', 'T-1001');
+- name: E-commerce tag: the same order id is sent once (a reloaded thank-you page, a second trigger)
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+
+    let pushes = 0;
+    let tracks = 0;
+    mock('callInWindow', function (path) {
+      if (path === 'tapper.push') { pushes = pushes + 1; }
+      if (path === 'tapper.track') { tracks = tracks + 1; }
+    });
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+    layer('purchase', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+    assertThat(pushes).isStrictlyEqualTo(1);
+    assertThat(tracks).isStrictlyEqualTo(1);
+    layer('purchase', { transaction_id: 'T-1002', value: 10, currency: 'EUR', items: [{ item_id: 'A' }] });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+    assertThat(pushes).isStrictlyEqualTo(2);
+    assertThat(tracks).isStrictlyEqualTo(2);
+- name: E-commerce tag: an ecommerce object left over from a different event is ignored
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('view_item', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'view_item', trackedPurchase);
+    layer('begin_checkout', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'begin_checkout', {});
+    layer('begin_checkout', { value: 5, currency: 'EUR', items: [{ item_id: 'NEW' }] });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'begin_checkout', { value: 5, currency: 'EUR', items: [{ item_id: 'NEW' }] });
+- name: E-commerce tag: an amount without a currency is not sent to tapper.track, but the conversion keeps the value
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', { transaction_id: 'T-77', value: 30, items: [{ item_id: 'A' }] });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'purchase', { transaction_id: 'T-77', items: [{ item_id: 'A' }] });
+    assertApi('callInWindow').wasCalledWith('tapper.push', 30, undefined, 'T-77');
+- name: E-commerce tag: a purchase with no value records a plain conversion
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('purchase', { transaction_id: 'T-78', items: [{ item_id: 'A' }] });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', recordPurchase: true });
+    assertApi('callInWindow').wasCalledWith('tapper.push', 1);
+- name: E-commerce tag: before the script has loaded the loader stub's buffer takes the call
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    const purchase = {
+      transaction_id: 'T-1001', value: 59.8, currency: 'EUR', tax: 4.5, shipping: 5, coupon: 'SPRING',
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1', affiliation: 'Web', coupon: 'ITEMCODE', secret_field: 'x' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+    const trackedPurchase = {
+      value: 59.8, currency: 'EUR', transaction_id: 'T-1001', coupon: 'SPRING', shipping: 5, tax: 4.5,
+      items: [
+        { item_id: 'SKU_1', item_name: 'Trail Shoe', item_brand: 'Acme', item_category: 'Shoes', item_category2: 'Trail', item_variant: 'Red', price: 49.9, quantity: 1, discount: 5, coupon: 'ITEMCODE', affiliation: 'Web', index: 0, item_list_id: 'L1', item_list_name: 'Home', location_id: 'LOC1' },
+        { item_id: 'SKU_2', item_name: 'Sock', price: 9.9, quantity: 2 }
+      ]
+    };
+
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? [] : undefined; });
+    layer('add_to_cart', purchase);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.push', ['track', 'add_to_cart', trackedPurchase]);
+- name: E-commerce tag: loads the script and initialises it when it is not on the page yet
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+
+    mock('copyFromWindow', function () { return undefined; });
+    mock('injectScript', function (url, onSuccess) { onSuccess(); });
+    layer('view_cart', { value: 1, currency: 'EUR' });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasCalledWith('tapper.init', 'pk_test_123456789');
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'view_cart', { value: 1, currency: 'EUR' });
+    assertApi('gtmOnSuccess').wasCalled();
+- name: E-commerce tag: an event name outside the vocabulary sends nothing
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+    layer('gtm.js', undefined);
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasNotCalled();
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: E-commerce tag: the Event name field overrides the data layer's event
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+    mock('copyFromWindow', function (path) { return path === 'tapper' ? {} : undefined; });
+
+    layer('gtm.js', { items: [{ item_id: 'A' }] });
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce', eventName: 'View_Item' });
+    assertApi('callInWindow').wasCalledWith('tapper.track', 'view_item', { items: [{ item_id: 'A' }] });
+- name: E-commerce tag: a script load failure reports gtmOnFailure and sends nothing
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+
+    mock('copyFromWindow', function () { return undefined; });
+    mock('injectScript', function (url, onSuccess, onFailure) { onFailure(); });
+    layer('view_cart', {});
+    runCode({ pk: 'pk_test_123456789', tagType: 'ecommerce' });
+    assertApi('callInWindow').wasNotCalled();
+    assertApi('gtmOnFailure').wasCalled();
+    assertApi('gtmOnSuccess').wasNotCalled();
+- name: E-commerce tag: every window and storage call is permitted (callInWindow, copyFromWindow, localStorage NOT mocked)
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+    function layer(eventName, ecommerce) {
+      mock('copyFromDataLayer', function (key) {
+        if (key === 'event') { return eventName; }
+        if (key === 'ecommerce') { return ecommerce; }
+        return undefined;
+      });
+    }
+
+    mock('injectScript', function (url, onSuccess) { onSuccess(); });
+    layer('purchase', { transaction_id: 'T-PERM', value: 5, currency: 'EUR', items: [{ item_id: 'A' }] });
+    runCode({ pk: 'pk_live_abc123', tagType: 'ecommerce', recordPurchase: true });
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: E-commerce tag: the data layer reads are permitted (copyFromDataLayer NOT mocked)
+  code: |-
+    const localStorage = require('localStorage');
+    const templateStorage = require('templateStorage');
+    localStorage.removeItem('tapper_ecom_orders');
+    templateStorage.removeItem('tapper_ecom_previous_event');
+    templateStorage.removeItem('tapper_ecom_previous_signature');
+
+    mock('injectScript', function (url, onSuccess) { onSuccess(); });
+    runCode({ pk: 'pk_live_abc123', tagType: 'ecommerce', eventName: 'view_cart' });
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
 setup: ''
-
-
 ___NOTES___
 
 Created on 15/05/2026, 17:07:01

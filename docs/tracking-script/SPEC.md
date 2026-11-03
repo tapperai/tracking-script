@@ -75,17 +75,22 @@ Not applicable — this repo has no database. The only "schema" is the
 
 | Name | Type | Validation |
 |---|---|---|
+| `tagType` | SELECT (default `monitor`) | `monitor` (start the script, All Pages) or `ecommerce` (send one e-commerce event, Custom Event trigger); a tag with no value is `monitor` |
 | `pk` | TEXT ("Public Key") | `NON_EMPTY`; regex `^pk_(live\|test)_[A-Za-z0-9]+$` |
+| `ecommercePlatform` | SELECT (monitor only) | `none`, `woocommerce`, `bigcommerce`, `salla`, `zid` -> `tapper.init(pk, { ecommerce })` |
+| `eventName`, `recordPurchase`, `email`, `phone`, `additionalFields` | e-commerce group | see [ecommerce-events/SPEC.md](../ecommerce-events/SPEC.md) |
 
 ### Web Permissions granted (`___WEB_PERMISSIONS___`)
 
 | Permission | Grant |
 |---|---|
 | `logging` | `environments: debug` |
-| `access_globals` | key `tapper.init`, read=false, write=false, execute=true |
+| `access_globals` | `tapper` read; `tapper.init`, `tapper.track`, `tapper.push` execute |
 | `inject_script` | urls: `https://monitor.tapper.ai/bundle.js` |
+| `read_data_layer` | keys `event`, `ecommerce` (the e-commerce tag, read-only) |
+| `access_local_storage` | key `tapper_ecom_orders` read + write (one order id, one purchase) |
 
-These three grants are exactly what the sandboxed JS needs and nothing more,
+These grants are exactly what the sandboxed JS needs and nothing more,
 and `scripts/validate_template.py` enforces both directions in CI:
 
 - **Nothing missing:** CI fails if the sandboxed JS uses an API without its

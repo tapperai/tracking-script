@@ -25,6 +25,8 @@ export const CONFIG = {
   checks: [
     { name: 'Validate template structure, grants and Gallery sha', cmd: ['python3', 'scripts/validate_template.py', 'template.tpl', '--metadata', 'metadata.yaml'], when: null },
     { name: 'The ___TESTS___ scenarios (GTM permission semantics)', cmd: ['node', 'scripts/run_template_tests.mjs', 'template.tpl'], when: null },
+    { name: 'The Custom HTML fallback body', cmd: ['node', 'scripts/run_custom_html_tests.mjs', 'gtm/custom-html-tag.html'], when: null },
+    { name: 'The GTM import files match template.tpl and the Custom HTML body', cmd: ['node', 'scripts/build_gtm_container.mjs', '--check'], when: null },
   ],
 };
 
