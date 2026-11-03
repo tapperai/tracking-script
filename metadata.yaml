@@ -1,6 +1,10 @@
 homepage: "https://tapper.ai"
 documentation: "https://docs.tapper.ai"
 versions:
+  - sha: a180c2ff9f74f91661c491fdf02ea67f653ec979
+    changeNotes: |-
+      Adds a second tag type, "Send an e-commerce event": fired by Custom Event triggers on GA4 e-commerce event names, it reads the event and the ecommerce object with the read-only data layer variable and sends them to Tapper, and records purchases as conversions (order-id dedupe, optional customer email and phone, plain or hashed).
+      The monitoring tag gains an optional E-commerce platform field. Existing tags are unchanged.
   - sha: 295cc787192dcc3bcf2b237b2febebe62a0711a1
     changeNotes: |-
       Fixes the monitor never starting: the template now has permission to call tapper.init (access globals, execute on "tapper.init").
