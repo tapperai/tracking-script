@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const html = readFileSync(process.argv[2] || "gtm/custom-html-tag.html", "utf8");
-const body = html.replace(/^<script>\s*/, "").replace(/\s*<\/script>\s*$/, "");
+const body = html.slice(html.indexOf("<script>") + "<script>".length, html.lastIndexOf("</" + "script>"));
 
 function run({ event, ecommerce, window: win = {}, edit = (s) => s }) {
   const store = new Map();
