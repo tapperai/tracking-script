@@ -1,5 +1,6 @@
 # Backlog
 
+- 2026-11-03: **E-commerce events tag (BUILT, import files not yet imported into a live GTM account).** The template got a second tag type (docs/ecommerce-events/SPEC.md), a Custom HTML fallback and two ready import files. To close: import into a test container, fire each trigger in Preview, read the events in the Tapper app; then Google lists the new first sha of metadata.yaml in the Gallery (typically 2-3 days).
 - 2026-10-18: testing policy, skip path proven by this docs-only change (devops-sre).
 
 Living list of every TODO the user has called out. When the user mentions

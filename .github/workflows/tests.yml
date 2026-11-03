@@ -95,6 +95,10 @@ jobs:
         run: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml
       - name: Run the ___TESTS___ scenarios (GTM permission semantics)
         run: node scripts/run_template_tests.mjs template.tpl
+      - name: Run the Custom HTML fallback scenarios
+        run: node scripts/run_custom_html_tests.mjs gtm/custom-html-tag.html
+      - name: Check the GTM import files match template.tpl and the Custom HTML body
+        run: node scripts/build_gtm_container.mjs --check
       # LEAK GUARD (2026-10-28): this repo is PUBLIC, so nothing in it may carry an internal name (project ids,
       # instance names, a tapper.ai host that is not on the public list). Plain node over the checkout, about a second,
       # inside this already-required job (no new workflow, no new billed minute). --redact keeps the matched text out of

@@ -29,8 +29,11 @@
 // "Limitations").
 //
 // This is an emulator, not GTM: it covers the APIs this template uses
-// (injectScript, callInWindow, logToConsole) and the test APIs its scenarios
-// use (mock, runCode, assertApi, assertThat, fail). A scenario that requires
+// (injectScript, callInWindow, copyFromWindow, copyFromDataLayer, logToConsole,
+// getType, makeNumber, makeString, JSON, localStorage, templateStorage) and the
+// test APIs its scenarios use (mock, runCode, assertApi, assertThat, fail).
+// read_data_layer (keyPatterns) and access_local_storage (keys) are checked like
+// access_globals: an exact key, an unmocked API checks its permission. A scenario that requires
 // anything else fails loudly rather than passing vacuously.
 //
 // Usage: node scripts/run_template_tests.mjs [template.tpl]
@@ -79,8 +82,44 @@ for (const g of grantsFor("inject_script")) {
   for (const li of (urls && urls.listItem) || []) injectUrls.push(li.string);
 }
 const hasLogging = grantsFor("logging").length > 0;
+const dataLayerKeys = [];
+let dataLayerAny = false;
+for (const g of grantsFor("read_data_layer")) {
+  if (paramValue(g, "allowedKeys")?.string === "any") dataLayerAny = true;
+  for (const li of paramValue(g, "keyPatterns")?.listItem || []) dataLayerKeys.push(li.string);
+}
+const storageKeys = { read: [], write: [] };
+for (const g of grantsFor("access_local_storage")) {
+  for (const li of paramValue(g, "keys")?.listItem || []) {
+    const row = {};
+    li.mapKey.forEach((k, i) => {
+      const v = li.mapValue[i];
+      row[k.string] = "string" in v ? v.string : v.boolean;
+    });
+    if (row.read) storageKeys.read.push(row.key);
+    if (row.write) storageKeys.write.push(row.key);
+  }
+}
 
 class PermissionError extends Error {}
+
+// GTM's getType names.
+function gtmType(v) {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  return typeof v;
+}
+
+// Key-order-free deep equality for assertApi(...).wasCalledWith (GTM compares by value).
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => deepEqual(a[k], b[k]));
+}
 function assertGlobals(op, path) {
   if (globals[op].indexOf(path) > -1) return;
   throw new PermissionError(`Prohibited ${op} on global variable: ${path}.`);
@@ -97,7 +136,43 @@ function runScenario(name, code, setup) {
     (apiCalls[api] = apiCalls[api] || []).push(args);
   };
 
+  const localStore = new Map();
+  const templateStore = new Map();
+  const fakeDataLayer = {};
+  const lookup = (root, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), root);
+  const storageCheck = (op, key) => {
+    if (storageKeys[op].indexOf(key) < 0) throw new PermissionError(`Prohibited ${op} on local storage key: ${key}.`);
+  };
+
   const realApis = {
+    copyFromWindow(path) {
+      assertGlobals("read", path);
+      return lookup(fakeWindow, path);
+    },
+    copyFromDataLayer(key) {
+      if (!dataLayerAny && dataLayerKeys.indexOf(key) < 0) {
+        throw new PermissionError(`Prohibited read from data layer variable: ${key}.`);
+      }
+      return lookup(fakeDataLayer, key);
+    },
+    getType: gtmType,
+    makeNumber(v) {
+      return typeof v === "string" && v.trim() === "" ? NaN : Number(v);
+    },
+    makeString(v) {
+      return v === undefined || v === null ? "" : String(v);
+    },
+    JSON,
+    localStorage: {
+      getItem(key) { storageCheck("read", key); return localStore.has(key) ? localStore.get(key) : null; },
+      setItem(key, value) { storageCheck("write", key); localStore.set(key, String(value)); return true; },
+      removeItem(key) { storageCheck("write", key); localStore.delete(key); },
+    },
+    templateStorage: {
+      getItem(key) { return templateStore.has(key) ? templateStore.get(key) : null; },
+      setItem(key, value) { templateStore.set(key, value); },
+      removeItem(key) { templateStore.delete(key); },
+    },
     injectScript(url, onSuccess, onFailure) {
       // Permission check as GTM's inject_script: exact URL in the allow list
       // (this template grants one literal URL, no wildcards).
@@ -127,6 +202,8 @@ function runScenario(name, code, setup) {
     if (!(api in realApis) && !(api in mocks)) {
       throw new Error(`runner does not emulate require('${api}'); extend scripts/run_template_tests.mjs`);
     }
+    // Object-style APIs (JSON, localStorage, templateStorage) are handed over as they are.
+    if (!(api in mocks) && typeof realApis[api] === "object") return realApis[api];
     return (...args) => {
       record(api, args);
       if (api in mocks) return mocks[api](...args);
@@ -157,8 +234,17 @@ function runScenario(name, code, setup) {
           if (calls().length) throw new Error(`expected ${api} NOT to be called`);
         },
         wasCalledWith(...expected) {
-          const hit = calls().some((a) => JSON.stringify(a) === JSON.stringify(expected));
-          if (!hit) throw new Error(`expected ${api} to be called with ${JSON.stringify(expected)}`);
+          const hit = calls().some((a) => deepEqual(a, expected));
+          if (!hit) {
+            throw new Error(
+              `expected ${api} to be called with ${JSON.stringify(expected)}; calls: ${JSON.stringify(calls())}`,
+            );
+          }
+        },
+        wasNotCalledWith(...expected) {
+          if (calls().some((a) => deepEqual(a, expected))) {
+            throw new Error(`expected ${api} NOT to be called with ${JSON.stringify(expected)}`);
+          }
         },
       };
     },

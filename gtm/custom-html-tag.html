@@ -1,0 +1,99 @@
+<script>
+/* Tapper - E-commerce events (Custom HTML).
+   Trigger: Custom Event on view_item, view_item_list, add_to_cart, remove_from_cart, view_cart, begin_checkout,
+   add_payment_info and purchase. Needs the Tapper monitoring tag on All Pages, and two GTM variables:
+   the built-in "Event" and a Data Layer Variable named "DLV - ecommerce" (Data Layer Variable Name: ecommerce, version 2).
+   It only READS what GTM already holds; it never touches dataLayer.push. */
+(function () {
+  var RECORD_PURCHASE = true;        // false: only send the event (you keep the Tapper conversion tag for purchases)
+  var CUSTOMER_EMAIL = '';           // optional, purchase only: a variable such as {{Customer email}}; plain or SHA-256 (64 hex)
+  var CUSTOMER_PHONE = '';           // optional, purchase only: {{Customer phone}}, +international format or SHA-256 (64 hex)
+
+  var EVENTS = { view_item: 1, view_item_list: 1, add_to_cart: 1, remove_from_cart: 1, view_cart: 1, search: 1, begin_checkout: 1, add_payment_info: 1, purchase: 1 };
+  var EVENT_KEYS = ['transaction_id', 'coupon', 'shipping', 'tax', 'payment_type', 'shipping_tier', 'item_list_id', 'item_list_name', 'promotion_id', 'promotion_name', 'creative_name', 'creative_slot', 'location_id'];
+  var ITEM_KEYS = ['item_id', 'item_name', 'item_brand', 'item_category', 'item_category2', 'item_category3', 'item_category4', 'item_category5', 'item_variant', 'price', 'quantity', 'discount', 'coupon', 'affiliation', 'index', 'item_list_id', 'item_list_name', 'location_id'];
+  var w = window;
+
+  var name = String({{Event}} || '').toLowerCase();
+  if (!EVENTS[name]) { return; }
+  var ec = {{DLV - ecommerce}};
+  if (!ec || typeof ec !== 'object') { ec = {}; }
+
+  function scalar(v) {
+    if (typeof v === 'string' && v !== '') { return v.length > 200 ? v.slice(0, 200) : v; }
+    if (typeof v === 'number' && v === v) { return v; }
+    return undefined;
+  }
+
+  var src = Object.prototype.toString.call(ec.items) === '[object Array]' ? ec.items : [];
+  var ids = [];
+  for (var i = 0; i < src.length && i < 200; i++) {
+    if (src[i] && typeof src[i] === 'object' && scalar(src[i].item_id) !== undefined) { ids.push(String(src[i].item_id)); }
+  }
+  var signature = String(ec.transaction_id || '') + '|' + String(ec.value || '') + '|' + ids.join(',');
+
+  // Google's rule: push "ecommerce: null" before every e-commerce event. If a page does not, the previous event's object is
+  // still in the data layer: an object identical to the previous, differently named event's belongs to that event, so it is ignored.
+  var state = (w.__tapperEcom = w.__tapperEcom || {});
+  if (signature !== '||' && state.signature === signature && state.event !== name) { ec = {}; }
+  state.event = name;
+  state.signature = signature;
+
+  var params = {};
+  var value = Number(ec.value);
+  var valueOk = ec.value !== '' && ec.value !== null && ec.value !== undefined && value === value && value >= 0 && value <= 9999999999;
+  var currency = typeof ec.currency === 'string' && ec.currency.length === 3 ? ec.currency : undefined;
+  if (valueOk && currency) { params.value = value; params.currency = currency; }
+  for (var k = 0; k < EVENT_KEYS.length; k++) {
+    var ev = scalar(ec[EVENT_KEYS[k]]);
+    if (ev !== undefined) { params[EVENT_KEYS[k]] = ev; }
+  }
+  var items = [];
+  var list = Object.prototype.toString.call(ec.items) === '[object Array]' ? ec.items : [];
+  for (var n = 0; n < list.length && n < 200; n++) {
+    if (!list[n] || typeof list[n] !== 'object') { continue; }
+    var item = {};
+    for (var m = 0; m < ITEM_KEYS.length; m++) {
+      var iv = scalar(list[n][ITEM_KEYS[m]]);
+      if (iv !== undefined) { item[ITEM_KEYS[m]] = iv; }
+    }
+    items.push(item);
+  }
+  if (items.length) { params.items = items; }
+
+  // One order is one purchase: an order id this browser already sent is skipped.
+  var orderId = name === 'purchase' && scalar(ec.transaction_id) !== undefined ? String(ec.transaction_id) : '';
+  var sent = [];
+  if (orderId) {
+    try { sent = JSON.parse(w.localStorage.getItem('tapper_ecom_orders') || '[]'); } catch (e) { sent = []; }
+    if (Object.prototype.toString.call(sent) !== '[object Array]') { sent = []; }
+    if (sent.indexOf(orderId) > -1) { return; }
+  }
+
+  // Before the Tapper script has loaded the page keeps the loader stub (an array); its buffer takes the call.
+  if (!w.tapper) { w.tapper = []; }
+  if (Object.prototype.toString.call(w.tapper) === '[object Array]' && !w.tapper.track) {
+    w.tapper.track = function (n, p) { w.tapper.push(['track', n, p]); };
+  }
+  if (typeof w.tapper.track === 'function') { w.tapper.track(name, params); }
+
+  if (name === 'purchase' && RECORD_PURCHASE) {
+    // Same arguments, same order as the Tapper conversion tag: push(value, currency, order id, extras, { email, phone }).
+    var userData = {};
+    if (typeof CUSTOMER_EMAIL === 'string' && CUSTOMER_EMAIL !== '') { userData.email = CUSTOMER_EMAIL; }
+    if (typeof CUSTOMER_PHONE === 'string' && CUSTOMER_PHONE !== '') { userData.phone = CUSTOMER_PHONE; }
+    var hasUserData = userData.email !== undefined || userData.phone !== undefined;
+    var amount = valueOk ? value : 0;
+    if (amount > 0) {
+      if (hasUserData) { w.tapper.push(amount, currency, orderId || undefined, undefined, userData); }
+      else { w.tapper.push(amount, currency, orderId || undefined); }
+    } else if (hasUserData) { w.tapper.push(1, undefined, undefined, undefined, userData); }
+    else { w.tapper.push(1); }
+  }
+
+  if (orderId) {
+    sent.push(orderId);
+    try { w.localStorage.setItem('tapper_ecom_orders', JSON.stringify(sent.length > 20 ? sent.slice(sent.length - 20) : sent)); } catch (e) { /* storage blocked */ }
+  }
+})();
+</script>
