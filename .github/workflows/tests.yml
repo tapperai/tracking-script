@@ -1,3 +1,8 @@
+# GITHUB COST ORDER (2026-11-04, T-15019, P-292): a pull_request run is ALWAYS mode NONE here (the labels `ci:run-tests` and
+# `ci:run-affected`, the line `Tests: affected` and the Actions variable CI_GATE_MODE are not read; every job, `CI gate` included,
+# is skipped, which GitHub counts as passing). Tests run on GitHub only as the nightly (test-batch.yml) and by workflow_dispatch
+# when the operator asks. The text below describes the historic modes; TYPECHECK, AFFECTED and FULL are reachable only by dispatch.
+#
 # tests.yml: THE WHOLE TEST SET, IN ONE WORKFLOW (CI standard 2026-10-17).
 #
 # This repo has no build/deploy job of its own: the GTM Community Template Gallery reads metadata.yaml on the default
@@ -114,7 +119,7 @@ jobs:
     name: CI gate
     needs: [validate-template]
     if: >-
-      ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.body, 'Tests: skip') && 'NONE' || contains(github.event.pull_request.body, 'Tests: local') && 'NONE' || contains(github.event.pull_request.labels.*.name, 'ci:run-tests') && 'FULL' || contains(github.event.pull_request.labels.*.name, 'ci:run-affected') && 'AFFECTED' || contains(github.event.pull_request.body, 'Tests: affected') && 'AFFECTED' || github.event.pull_request.draft && 'NONE' || vars.CI_GATE_MODE || 'NONE') != 'NONE' }}
+      ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode || 'FULL') || contains(github.event.pull_request.labels.*.name, 'ci:skip-tests') && 'NONE' || contains(github.event.pull_request.body, 'Tests: skip') && 'NONE' || contains(github.event.pull_request.body, 'Tests: local') && 'NONE' || github.event.pull_request.draft && 'NONE' || 'NONE') != 'NONE' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
