@@ -1,3 +1,4 @@
+# T-15019 (2026-11-04, GitHub cost order): this trigger has NO push trigger any more; it runs once a night (schedule) and by hand.
 # Test batch trigger (CI standard 2026-10-17; root CLAUDE.md "GitHub Actions cost" rule 7).
 #
 # Merges do not wait for tests (CI_GATE_MODE, org Actions variable, NONE today). This workflow starts the tests
@@ -14,8 +15,6 @@
 name: Test batch trigger
 
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: "41 1 * * *"
   workflow_dispatch:

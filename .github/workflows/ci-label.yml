@@ -1,3 +1,9 @@
+# GITHUB COST ORDER (2026-11-04, T-15019, P-292; org Actions gross was $1,016 for 1-4 Nov): the labels `ci:run-tests` and
+# `ci:run-affected` and the line `Tests: affected` START NOTHING any more. Tests run on GitHub only as the ONE nightly
+# (test-batch.yml, only when the branch moved) and when the operator asks (workflow_dispatch of tests.yml, `-f reason=on-demand`).
+# Agents test locally or on the box and record `Tests: local (<the exact command>)` or `Tests: skip (<reason>)`.
+# The text below is the history of the removed label dispatch.
+#
 # CI label switch (CI standard 2026-10-17, testing policy 2026-10-18). tests.yml does NOT run on label events: a Loop
 # label (loop:review-*, loop:drive) would restart a FULL run, and a skipped run would hide one still running or red.
 # Only the three `ci:` labels act, here:
@@ -20,7 +26,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: ${{ github.event.label.name == 'ci:run-tests' || github.event.label.name == 'ci:run-affected' || github.event.label.name == 'ci:skip-tests' }}
+    if: ${{ github.event.label.name == 'ci:skip-tests' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 3
     steps:
