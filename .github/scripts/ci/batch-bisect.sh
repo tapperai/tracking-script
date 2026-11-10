@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# BATCH BISECT (CI standard 2026-10-17). A red test batch names the guilty merge.
+# BATCH BISECT. A red test batch names the guilty merge.
 #
 # Runs in tests.yml's `bisect` job when a batch or nightly run failed. Walks the FIRST-PARENT line (one entry per
 # merge) between the newest commit the batch tested green on this branch (GOOD) and the red commit (BAD), running
 # BISECT_CMD at each step (`git bisect run`: exit 0 good, 125 skip, anything else bad). The culprit, its PR and its
-# author agent go to the run summary, an `::error title=Batch culprit::` annotation, the artifact file
-# bisect-result.json, and a comment on the culprit PR. Nothing is reverted or blocked here: Master gets the red run
-# as CI_RED in Loop and reverts (prod hurt) or dispatches a fix forward (otherwise).
+# author go to the run summary, an `::error title=Batch culprit::` annotation, the artifact file
+# bisect-result.json, and a comment on the culprit PR. Nothing is reverted or blocked here; the maintainers follow up.
 #
 # SECURITY: this job runs merged code (BISECT_CMD at older commits), so it holds a READ-ONLY token (contents:read,
 # actions:read, pull-requests:read). The PR comment is posted by the separate `bisect-report` job (no checkout,
@@ -19,7 +18,7 @@
 # BISECT_MAX_MERGES (the longest range bisected, default 32 = 5 steps; an older GOOD, or none, is set to it),
 # BISECT_BUDGET_MINUTES (default 0 = none: the time every step together may take; keep it under the job's
 # timeout-minutes), BISECT_LOG (where the step output goes, default $RUNNER_TEMP/batch-bisect.log).
-# BOUNDED (T-8838): loop runs 39156510644 and 39173306376 bisected 70 and 91 merges at ~4-7 minutes a step, hit the
+# BOUNDED: two earlier runs bisected 70 and 91 merges at ~4-7 minutes a step, hit the
 # job's 30-minute timeout and left NO bisect-result (it was written only at the end). Now an INCONCLUSIVE result is
 # on disk from the start and rewritten at each end, every step runs under the budget, and a spent budget stops
 # `git bisect run` (exit 255) and reports how far it narrowed the range. The output is shown live (tee), not hidden.
@@ -75,7 +74,7 @@ if [ -z "$GOOD" ]; then
   # `(affected)` run AFFECTED, and the every-10-merges batch since 2026-10-23, `(batch-affected)`, tested part of the
   # tree). A failure such a run could not see may already be there: with one as GOOD the bisect would say PRE_EXISTING
   # instead of naming the merge. Otherwise the same family the trigger measures from, not the newest green run of ANY
-  # reason (an `(affected)` run of one change, a hand `(on-demand)` one: T-10194 review 2). The sha is the leading
+  # reason (an `(affected)` run of one change, a hand `(on-demand)` one: ). The sha is the leading
   # `Tests <sha>` of the run-name only.
   only='\\((batch|batch-affected|nightly)\\)$'; [ "${GOOD_FULL_ONLY:-}" != 1 ] || only='\\((batch|nightly)\\)$'
   GOOD="$(gh api "repos/$REPO/actions/workflows/$WF/runs?branch=$BRANCH&event=workflow_dispatch&status=success&per_page=30" \
@@ -84,7 +83,7 @@ if [ -z "$GOOD" ]; then
 fi
 if [ -z "$GOOD" ] || ! git merge-base --is-ancestor "$GOOD" "$BAD" 2>/dev/null || [ "$GOOD" = "$BAD" ]; then
   # Nothing to measure from: the newest MAXR merges (not CI_BATCH_SIZE: a batch's range can be longer than one batch of
-  # counted merges, and the cap below applies anyway; T-10194 review 2).
+  # counted merges, and the cap below applies anyway; ).
   GOOD="$(git rev-list --first-parent --max-count=$((MAXR + 1)) "$BAD" | tail -1)"
   say "No green batch is an ancestor of ${BAD:0:12}; bisecting the last $MAXR merges (from ${GOOD:0:12})."
 fi
@@ -176,7 +175,7 @@ if [ -z "$culprit" ]; then
 fi
 
 pr="$(gh api "repos/$REPO/commits/$culprit/pulls" --jq ".[] | select(.merge_commit_sha==\"$culprit\") | .number" 2>/dev/null | head -1 || true)"
-# Author agent: the PR head's author (a merge commit's second parent), else the commit's own author.
+# Author: the PR head's author (a merge commit's second parent), else the commit's own author.
 if git rev-parse -q --verify "$culprit^2" >/dev/null; then who="$(git log -1 --format='%an <%ae>' "$culprit^2")"; else who="$(git log -1 --format='%an <%ae>' "$culprit")"; fi
 title="$(git log -1 --format=%s "$culprit")"
 say "BATCH CULPRIT: $culprit ${pr:+PR #$pr} by $who: $title"

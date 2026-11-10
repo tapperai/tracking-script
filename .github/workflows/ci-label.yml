@@ -1,19 +1,5 @@
-# GITHUB COST ORDER (2026-11-04, T-15019, P-292; org Actions gross was $1,016 for 1-4 Nov): the labels `ci:run-tests` and
-# `ci:run-affected` and the line `Tests: affected` START NOTHING any more. Tests run on GitHub only as the ONE nightly
-# (test-batch.yml, only when the branch moved) and when the operator asks (workflow_dispatch of tests.yml, `-f reason=on-demand`).
-# Agents test locally or on the box and record `Tests: local (<the exact command>)` or `Tests: skip (<reason>)`.
-# The text below is the history of the removed label dispatch.
-#
-# CI label switch (CI standard 2026-10-17, testing policy 2026-10-18). tests.yml does NOT run on label events: a Loop
-# label (loop:review-*, loop:drive) would restart a FULL run, and a skipped run would hide one still running or red.
-# Only the three `ci:` labels act, here:
-#   ci:run-tests     dispatches the FULL set on the PR head;
-#   ci:run-affected  dispatches mode AFFECTED on the PR head, measured from the PR's base sha (the run is named
-#                    `Tests <sha> (affected)`: batch-trigger.sh's last-tested lookup ignores such runs);
-#   ci:skip-tests    dispatches a NONE run, whose skipped `CI gate` on the head lets the PR merge (the reason goes in a
-#                    PR comment; the batch still covers the merge).
-# Removing a label does nothing: the next push runs under the author's recorded choice (tests.yml), else CI_GATE_MODE.
-# COST: no runner for any other label (job-level if); one ~10 s job per ci: label.
+# CI label switch. The label `ci:skip-tests` starts a skipped run of tests.yml on the pull request head so that the
+# `CI gate` check can pass. No runner starts for any other label.
 name: CI label switch
 
 on:

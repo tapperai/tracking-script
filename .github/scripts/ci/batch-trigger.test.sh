@@ -5,8 +5,8 @@
 # a run cancelled sooner is not, the nightly keeps the strict rule, failure and success still count, `affected` never does;
 # the batch runs AFFECTED from the last tested sha (reason batch-affected, a baseline for the next batch but never for the
 # nightly), and FULL when there is nothing to measure from; the time window (CI_BATCH_MIN_INTERVAL_MIN, CI_BATCH_MAX) and
-# the promotion rule (a dev -> master promotion counts toward no master batch when the repo has dev), T-10194; and the
-# T-10194 review: CI_BATCH_MAX counts every first-parent merge, a deferred tail goes with the nightly, a merge with code of
+# the promotion rule (a dev -> master promotion counts toward no master batch when the repo has dev),  and the
+# : CI_BATCH_MAX counts every first-parent merge, a deferred tail goes with the nightly, a merge with code of
 # its own (tree differs from its dev side) counts, only the leading `Tests <sha>` of a run-name is a tested sha, and the
 # baseline and the AFFECTED base are on the first-parent line, the base from a PASSED batch, batch-affected or nightly run.
 set -euo pipefail
@@ -124,7 +124,7 @@ ok "the batch baseline still takes a requested run"     "$(last master)" "$(c 25
 GITHUB_EVENT_NAME=schedule BATCH_BRANCHES=dev bash "$SCRIPT" >/dev/null
 ok "nightly runs FULL on a head only a requested run tested" "$(grep -c 'workflow run' "$GH_LOG" || true)" "1"
 
-# 9 the time window (T-10194): a due batch waits until the newest batch on the branch is CI_BATCH_MIN_INTERVAL_MIN old
+# 9 the time window: a due batch waits until the newest batch on the branch is CI_BATCH_MIN_INTERVAL_MIN old
 NOW="$(date -u -d 2026-10-24T12:00:00Z +%s)"
 # runat <conclusion> <sha> <reason> <created_at>: a run dispatched at <created_at>
 runat() { run "$1" 9 "$2" "$3" | jq --arg t "$4" '.created_at = $t'; }
@@ -149,8 +149,7 @@ ok "a recent nightly does not defer a batch"           "$(batch_push env GITHUB_
 ok "a recent FULL batch opens the window too"          "$(batch_push env GITHUB_SHA="$(c 21)")" "0"
 ok "the deferred batch is unchanged once the window passes" "$(batch_push env BATCH_NOW="$(date -u -d 2026-10-24T12:51:00Z +%s)" GITHUB_SHA="$(c 21)")" "1"
 ok "... and it is the AFFECTED batch from the baseline" "$(grep -c "reason=batch-affected.*base=$(c 11)\|base=$(c 11).*reason=batch-affected" "$GH_LOG" || true)" "1"
-# 9b a deferred tail on a branch that then goes quiet: the nightly tests that head FULL (T-10194 review: no hourly
-#    trigger; a branch below CI_BATCH_SIZE merges waits for the nightly the same way)
+# 9b a deferred tail on a branch that then goes quiet: the nightly tests that head FULL
 git checkout -q --detach "$(c 21)"
 { runat success "$(c 11)" batch-affected 2026-10-24T11:40:00Z; } | fixture
 ok "a quiet branch's tail: deferred at the push"       "$(batch_push env GITHUB_SHA="$(c 21)")" "0"
@@ -158,8 +157,7 @@ ok "a quiet branch's tail: deferred at the push"       "$(batch_push env GITHUB_
 ok "... the nightly then runs on that head"            "$(grep -c "sha=$(c 21) -f reason=nightly" "$GH_LOG" || true)" "1"
 ok "... FULL (no mode input)"                          "$(grep -c 'mode=' "$GH_LOG" || true)" "0"
 git checkout -q master
-# 9c the AFFECTED batch's base is the newest PASSED (batch), (batch-affected) or (nightly) run on the line (T-10194
-#    review); the count still starts at the newest TESTED one, so a red or timed-out batch does not send a batch per push
+# 9c the AFFECTED batch's base is the newest PASSED (batch), (batch-affected) or (nightly) run on the line; the count still starts at the newest TESTED one, so a red or timed-out batch does not send a batch per push
 { runat failure "$(c 11)" batch-affected 2026-10-24T09:00:00Z; run success 9 "$(c 8)" on-demand; run success 9 "$(c 3)" batch; } | fixture
 ok "10 merges after a red batch: one batch"            "$(batch_push env GITHUB_SHA="$(c 21)")" "1"
 ok "... measured from the newest PASSED batch run"     "$(grep -c "reason=batch-affected.*base=$(c 3)\$" "$GH_LOG" || true)" "1"
@@ -208,10 +206,10 @@ ok "... 10 counted: 9 hotfixes and the hotfix merge, not the promotion" "$(grep 
 ok "on dev the promotion rule does not apply"          "$(GITHUB_REF_NAME=dev batch_push env GITHUB_SHA="$PHEAD" CI_BATCH_MIN_INTERVAL_MIN=0)" "1"
 
 # 11 the batch baseline is the newest tested sha ON THE BRANCH'S LINE: a hand dispatch on master that tested a PR head
-#    (free-text reason) is skipped, not taken as "nothing to measure from" (that made the batch FULL; loop 2026-10-24)
+#    (free-text reason) is skipped, not taken as "nothing to measure from" (that made the batch FULL)
 git checkout -q -b side "$BASE"; git commit -q --allow-empty -m "a PR head"; OFF="$(git rev-parse HEAD)"; git checkout -q master
 MHEAD="$(git rev-parse master)"
-{ runat failure "$OFF" "affected rerun after loop#2913 heap fix" 2026-10-24T09:00:00Z; run success 9 "$PHEAD" nightly; } | fixture
+{ runat failure "$OFF" "affected rerun after a heap fix" 2026-10-24T09:00:00Z; run success 9 "$PHEAD" nightly; } | fixture
 ok "an off-line dispatch is not the baseline"         "$(TRIGGER_SELFTEST=1 bash "$SCRIPT" last_tested_on_line master "$MHEAD")" "$PHEAD"
 ok "10 merges after the on-line baseline: one batch"  "$(batch_push env GITHUB_SHA="$MHEAD" CI_BATCH_MIN_INTERVAL_MIN=0)" "1"
 ok "... AFFECTED from the on-line baseline, not FULL" "$(grep -c "reason=batch-affected.*base=$PHEAD" "$GH_LOG" || true)" "1"
@@ -220,7 +218,7 @@ ok "5 merges after it: no batch (was a FULL batch)"   "$(batch_push env GITHUB_S
 ok "only off-line runs: nothing to measure, FULL"     "$(batch_push env GITHUB_SHA="$MHEAD" CI_BATCH_MIN_INTERVAL_MIN=0)" "1"
 ok "... reason batch"                                 "$(grep -c 'reason=batch$' "$GH_LOG" || true)" "1"
 
-# 12 the window's CI_BATCH_MAX bypass counts EVERY first-parent merge since the last tested sha (T-10194 review): the
+# 12 the window's CI_BATCH_MAX bypass counts EVERY first-parent merge since the last tested sha: the
 #    bisect caps at BISECT_MAX_MERGES first-parent merges, local and skip included, so 25 counted + 10 local must go
 W="$T/max"; git init -q -b master "$W"; cd "$W"
 git commit -q --allow-empty -m base; WB="$(git rev-parse HEAD)"
@@ -233,7 +231,7 @@ ok "25 counted + 10 local inside the window: one batch" "$(batch_push env GITHUB
 ok "... the summary counts 25 of 35"                   "$(grep -c '^master: 25 merge(s) to test.*(35 merged' "$T/out.txt" || true)" "1"
 ok "25 counted + 6 local (31) inside the window: deferred" "$(batch_push env GITHUB_SHA="$W31")" "0"
 
-# 12b the same cap makes a batch due on its own (T-10194 review 2): CI_BATCH_MAX merges of any choice waiting with at least
+# 12b the same cap makes a batch due on its own: CI_BATCH_MAX merges of any choice waiting with at least
 #    one counted. 22 local + 9 counted = 31 waits; the 32nd merge dispatches (9 counted, below CI_BATCH_SIZE), or the next
 #    batch's range would run past what the bisect walks. 32 local merges: nothing to test, no batch.
 V="$T/cap"; git init -q -b master "$V"; cd "$V"
@@ -255,7 +253,7 @@ for i in $(seq 1 32); do git commit -q --allow-empty -m "local $i" -m "Tests: lo
 ok "32 local merges, none counted: no batch"              "$(batch_push env GITHUB_SHA="$(git rev-parse HEAD)")" "0"
 
 # 13 a master merge whose merged side is on dev counts toward no master batch only when it holds EXACTLY that side's
-#    tree (T-10194 review): a promotion with a conflict fix of its own, or a hotfix branch merged into dev first and
+#    tree: a promotion with a conflict fix of its own, or a hotfix branch merged into dev first and
 #    then into a master that moved, holds code no dev batch tested
 Q="$T/tree"; git init -q -b master "$Q"; cd "$Q"
 echo a > a.txt; git add a.txt; git commit -q -m base; QB="$(git rev-parse HEAD)"
@@ -272,7 +270,7 @@ git checkout -q dev; git merge -q --no-ff hot -m "Merge pull request #3 from tap
 git checkout -q -b m3 "$QB"; echo m > m.txt; git add m.txt; git commit -q -m "master-only change" -m "Tests: local (npm test)"
 git merge -q --no-ff hot -m "Merge pull request #4 from tapperai/hot"; HOTM="$(git rev-parse HEAD)"
 ok "a hotfix merged into dev first, then into a moved master: counted" "$(batch_push env GITHUB_SHA="$HOTM" CI_BATCH_SIZE=1 CI_BATCH_MIN_INTERVAL_MIN=0)" "1"
-# 13b a hotfix branch merged into dev first and then into an UNMOVED master has exactly its own tree (T-10194 review 2):
+# 13b a hotfix branch merged into dev first and then into an UNMOVED master has exactly its own tree:
 #    only a merged side on dev's FIRST-PARENT line (a dev tip, as a promotion carries) is dev-counted
 git checkout -q master; git checkout -q -b hot2 "$CLEAN"; echo h2 > h2.txt; git add h2.txt; git commit -q -m "hotfix 2"
 git checkout -q dev; git merge -q --no-ff hot2 -m "Merge pull request #5 from tapperai/hot2"; git update-ref refs/remotes/origin/dev HEAD
@@ -284,21 +282,21 @@ ok "... the summary counts it"                         "$(grep -c '^master: 1 me
 git checkout -q -b prom "$CLEAN"; git merge -q --no-ff dev -m "Merge pull request #7 from tapperai/dev"; PROM="$(git rev-parse HEAD)"; git checkout -q master
 ok "a promotion of dev's tip (a first-parent commit) is still not counted" "$(batch_push env GITHUB_SHA="$PROM" CI_BATCH_SIZE=1 CI_BATCH_MIN_INTERVAL_MIN=0)" "0"
 
-# 14 only the LEADING `Tests <sha>` of a run-name is the sha it tested (T-10194 review): a sha named in a free-text
+# 14 only the LEADING `Tests <sha>` of a run-name is the sha it tested: a sha named in a free-text
 #    reason is not a tested sha, and not the baseline of the push it names
 { run success 9 "$S1" "rerun, compare $S2"; run success 9 "$S3" batch; } | fixture
 ok "a sha in the reason is not a tested sha"           "$(TRIGGER_SELFTEST=1 bash "$SCRIPT" tested_shas master | tr '\n' ' ')" "$S1 $S3 "
 { run success 9 "$(git rev-parse hot)" "on-demand, see $FIXED"; run success 9 "$QB" batch; } | fixture
 ok "... nor the baseline of the commit it names"       "$(TRIGGER_SELFTEST=1 bash "$SCRIPT" last_tested_on_line master "$FIXED")" "$QB"
 
-# 15 the baseline and the base are on the branch's FIRST-PARENT line (T-10194 review): an ancestor on a merged side (a
+# 15 the baseline and the base are on the branch's FIRST-PARENT line: an ancestor on a merged side (a
 #    PR head merged with --no-ff, a dev commit a promotion carried) is not where the branch's own merges start
 { run success 9 "$(git rev-parse hot)" batch; run success 9 "$QB" batch; } | fixture
 ok "an ancestor on a merged side is not on the line"   "$(TRIGGER_SELFTEST=1 bash "$SCRIPT" last_tested_on_line master "$HOTM")" "$QB"
 batch_push env GITHUB_SHA="$HOTM" CI_BATCH_SIZE=1 CI_BATCH_MIN_INTERVAL_MIN=0 >/dev/null
 ok "... nor the AFFECTED base"                         "$(grep -c "base=$QB\$" "$GH_LOG" || true)" "1"
 
-# 16 batch-bisect.sh and the workflow that runs it (T-10194 review 2): a red batch-affected run is bisected from its own
+# 16 batch-bisect.sh and the workflow that runs it: a red batch-affected run is bisected from its own
 #    base (tests.yml passes it as GOOD), the cap the trigger bypasses at is the cap the bisect uses, and with no green
 #    end the bisect walks BISECT_MAX_MERGES merges, not CI_BATCH_SIZE
 BIS="$(dirname "$SCRIPT")/batch-bisect.sh"; WFD="$(cd "$(dirname "$SCRIPT")/../../workflows" && pwd)"

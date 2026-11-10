@@ -1,52 +1,8 @@
-# GITHUB COST ORDER (2026-11-04, T-15019, P-292): a pull_request run is ALWAYS mode NONE here (the labels `ci:run-tests` and
-# `ci:run-affected`, the line `Tests: affected` and the Actions variable CI_GATE_MODE are not read; every job, `CI gate` included,
-# is skipped, which GitHub counts as passing). Tests run on GitHub only as the nightly (test-batch.yml) and by workflow_dispatch
-# when the operator asks. The text below describes the historic modes; TYPECHECK, AFFECTED and FULL are reachable only by dispatch.
-#
-# tests.yml: THE WHOLE TEST SET, IN ONE WORKFLOW (CI standard 2026-10-17).
-#
-# This repo has no build/deploy job of its own: the GTM Community Template Gallery reads metadata.yaml on the default
-# branch and serves the template.tpl of the commit named by its FIRST versions sha (not the branch HEAD).
-#
-# THE PRE-DEPLOY CHECK STAYS A HARD STOP. `Validate template.tpl (pre-deploy gate)` runs on every ready PR in every
-# gate mode and is a required context next to `CI gate` (ruleset `required-checks`): it takes about 10 seconds (one
-# billed minute) and stops a broken template, a missing permission grant or a bad Gallery sha before it lands on the
-# branch Google reads. It runs only env-independent checks (python3 stdlib and node, no network, no secrets, no npm
-# install): every JSON section parses, every global / permission the sandboxed JS uses is granted with the FULL dotted
-# path, the version the Gallery serves (first sha in metadata.yaml) is this template, and the template's own
-# ___TESTS___ scenarios pass.
-#
-# Everything else follows the gate mode, the Actions variable CI_GATE_MODE (org-wide, NONE today; a repo variable of
-# the same name overrides it). The effective mode of a run (MODE):
-#   a dispatch                       -> inputs.mode (default FULL)
-#   label `ci:skip-tests`            -> NONE      label `ci:run-tests` -> FULL
-#   a draft                          -> NONE      otherwise            -> CI_GATE_MODE
-# Under NONE `CI gate` is skipped, which GitHub counts as passing. There is no other suite here: the validation IS the
-# test set, so TYPECHECK, AFFECTED and FULL only add `CI gate` over it. The test batch (test-batch.yml: every
-# CI_BATCH_SIZE merges, nightly, on demand) runs it on main and bisects a red run to the guilty merge.
-#
-# PUBLIC REPO: a dispatch (the batch) validates the BRANCH HEAD it was started on, never a commit named by an input:
-# checking out an input-named ref in the default-branch context is what code scanning flags as cache poisoning. The
-# batch dispatches at the head it just counted, so the two are the same commit unless a newer merge landed in between
-# (then the newer head is what gets tested, and a notice says so). The bisect walks the branch's own first-parent line.
-#
-# COST: 1 billed minute per ready PR (arm64, $0.005); a batch run 1 minute.
-# TESTING POLICY (2026-10-18; "Testing a change" in CLAUDE.md). The author's recorded choice wins over CI_GATE_MODE, in the
-# mode expression below (identical in every place it is inlined): label `ci:skip-tests`, or `Tests: skip` / `Tests: local`
-# in the PR description -> NONE; label `ci:run-tests` -> FULL; label `ci:run-affected`, or `Tests: affected` in the PR
-# description -> AFFECTED. A dispatch in mode AFFECTED (label `ci:run-affected` through ci-label.yml, or a merged commit
-# with the trailer `Tests: affected` through batch-trigger.sh) measures `base` (default the sha's first parent) ... sha and
-# is named `Tests <sha> (affected)`: batch-trigger.sh's last-tested lookup ignores such runs. The every-10-merges batch
-# counts only affected and unmarked merges (`Tests: local` / `Tests: skip` ones do not); ONE nightly FULL run per repo.
-# The expression holds `: `, so every key that carries it is a folded block scalar (a plain scalar would not parse).
-# THE EVERY-10-MERGES BATCH RUNS AFFECTED (2026-10-23, operator decision, GitHub Actions cost). test-batch.yml now
-# dispatches this workflow in mode AFFECTED with `base` = the last tested sha and reason `batch-affected`: the run
-# measures base...sha (the merges since the last tested batch or nightly) and runs only what they can reach, widening to
-# the whole suite by this file's own rules. It is FULL (reason `batch`) only when there is no tested sha to measure from.
-# The ONE nightly run per repo stays FULL and is what covers the rest; an AFFECTED batch does not count as having tested
-# a head for the nightly. A red `batch-affected` run bisects like a red batch (`bisect`, GOOD = the newest green run; a
-# red nightly takes only a green FULL run as GOOD, GOOD_FULL_ONLY), and reaches Master as CI_RED, but its green never
-# resolves a CI_RED. The run-name reason is part of the LOAD-BEARING name: batch-trigger.sh finds the baseline by it.
+# Tests for this template. A pull request runs the pre-deploy validation (`Validate template`, a required check): it parses
+# every section of the template, checks the permission grants and runs the template's own test scenarios, with no network
+# and no secrets. A scheduled or manually started run (workflow_dispatch) validates the branch head it was started on.
+# A red scheduled run bisects the branch's recent merges and comments on the pull request that introduced the failure.
+# Public repository: the job token is read-only, and a dispatch never checks out a commit named by an input.
 name: Tests
 run-name: "Tests ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.reason || github.event_name }})"
 
@@ -72,7 +28,7 @@ concurrency:
 
 jobs:
   validate-template:
-    # The job name IS a required context (ruleset `required-checks`): never rename it.
+    # The job name IS a required context (a required check): never rename it.
     name: Validate template.tpl (pre-deploy gate)
     if: ${{ !github.event.pull_request.draft }}
     # python3 (stdlib) and node come with the ARM image; nothing is installed.
@@ -104,7 +60,7 @@ jobs:
         run: node scripts/run_custom_html_tests.mjs gtm/custom-html-tag.html
       - name: Check the GTM import files match template.tpl and the Custom HTML body
         run: node scripts/build_gtm_container.mjs --check
-      # LEAK GUARD (2026-10-28): this repo is PUBLIC, so nothing in it may carry an internal name (project ids,
+      # LEAK GUARD: this repo is PUBLIC, so nothing in it may carry an internal name (project ids,
       # instance names, a tapper.ai host that is not on the public list). Plain node over the checkout, about a second,
       # inside this already-required job (no new workflow, no new billed minute). --redact keeps the matched text out of
       # this public log. Canon of the script and its lists: design-system scripts/leak-guard.
@@ -113,7 +69,7 @@ jobs:
       - name: test-changed selection (node --test)
         run: node --test scripts/test-changed.test.mjs
 
-  # THE GATE-MODE CONTEXT (ruleset `required-checks`, main), required beside the pre-deploy check. Skipped under NONE,
+  # THE GATE-MODE CONTEXT (a required check), required beside the pre-deploy check. Skipped under NONE,
   # which GitHub counts as passing. Never rename it, never paths-ignore this workflow.
   gate:
     name: CI gate
@@ -149,11 +105,11 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BAD: ${{ inputs.sha || github.sha }}
           # A batch-affected run was measured from `base`, a PASSED sha on the branch (batch-trigger.sh): that is its good end,
-          # not the newest green run of any reason (T-10194 review 2). Any other run: batch-bisect.sh looks one up.
+          # not the newest green run of any reason. Any other run: batch-bisect.sh looks one up.
           GOOD: ${{ inputs.reason == 'batch-affected' && inputs.base || '' }}
           GOOD_FULL_ONLY: ${{ inputs.reason == 'nightly' && '1' || '' }}
           # The bisect walks at most the trigger's CI_BATCH_MAX merges (32, test-batch.yml), and ends inside this job's 30
-          # minutes with a result that says how far it got (T-8838).
+          # minutes with a result that says how far it got.
           BISECT_MAX_MERGES: "32"
           BISECT_BUDGET_MINUTES: "25"
           BISECT_CMD: python3 scripts/validate_template.py template.tpl --metadata metadata.yaml && node scripts/run_template_tests.mjs template.tpl
@@ -179,4 +135,4 @@ jobs:
       - env: { GH_TOKEN: "${{ github.token }}", REPO: "${{ github.repository }}", RUN: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
         run: |
           pr=$(jq -r '.pr // empty' bisect-result.json); [ "$(jq -r .status bisect-result.json)" = CULPRIT ] && [ -n "$pr" ] || exit 0
-          gh pr comment "$pr" -R "$REPO" --body "The test batch at \`$(jq -r .bad bisect-result.json | cut -c1-12)\` on \`$(jq -r .branch bisect-result.json)\` failed; the bisect names this PR's merge \`$(jq -r .culprit_sha bisect-result.json | cut -c1-12)\` as the first bad commit ($RUN). Nothing was reverted automatically: Master in Loop reverts when prod is hurt, otherwise dispatches a fix forward."
+          gh pr comment "$pr" -R "$REPO" --body "The test batch at \`$(jq -r .bad bisect-result.json | cut -c1-12)\` on \`$(jq -r .branch bisect-result.json)\` failed; the bisect names this PR's merge \`$(jq -r .culprit_sha bisect-result.json | cut -c1-12)\` as the first bad commit ($RUN). Nothing was reverted automatically; the maintainers will follow up."
