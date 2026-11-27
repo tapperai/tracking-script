@@ -13,7 +13,7 @@ ___INFO___
   "id": "cvt_temp_public_id",
   "version": 1,
   "securityGroups": [],
-  "displayName": "Tapper - Monitoring Script",
+  "displayName": "Tapper - Website tag",
   "categories": [
     "ADVERTISING",
     "ANALYTICS"
@@ -40,7 +40,7 @@ ___TEMPLATE_PARAMETERS___
     "selectItems": [
       {
         "value": "monitor",
-        "displayValue": "Start the Tapper monitoring script (trigger: All Pages)"
+        "displayValue": "Start the Tapper website tag (trigger: All Pages)"
       },
       {
         "value": "ecommerce",
