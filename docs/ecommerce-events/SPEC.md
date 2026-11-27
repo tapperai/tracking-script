@@ -8,9 +8,9 @@
 
 ## What it is
 
-The GTM Community Template now has two tag types (the field **What should this tag do?**, default **Start the Tapper monitoring script**, so every tag made before this change behaves exactly as it did):
+The GTM Community Template now has two tag types (the field **What should this tag do?**, default **Start the Tapper website tag**, so every tag made before this change behaves exactly as it did):
 
-1. **Start the Tapper monitoring script** (All Pages): loads `bundle.js` and calls `tapper.init(pk)`. New optional field **E-commerce platform capture** (None, WooCommerce, BigCommerce, Salla, Zid) becomes `tapper.init(pk, { ecommerce: "<platform>" })`.
+1. **Start the Tapper website tag** (All Pages): loads `bundle.js` and calls `tapper.init(pk)`. New optional field **E-commerce platform capture** (None, WooCommerce, BigCommerce, Salla, Zid) becomes `tapper.init(pk, { ecommerce: "<platform>" })`.
 2. **Send an e-commerce event**: fired by a **Custom Event** trigger on a GA4 e-commerce event name. It reads the event name and the `ecommerce` object at fire time with the sandboxed `copyFromDataLayer` (read-only) and calls `tapper.track(name, params)`. On `purchase` it also records the order as a conversion.
 
 **It never wraps, replaces or calls `dataLayer.push`** (incident 2026-06-12). `copyFromDataLayer` reads GTM's own data model for two keys, `event` and `ecommerce`, and nothing else.

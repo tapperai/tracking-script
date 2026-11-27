@@ -55,7 +55,7 @@ const templateFile = wrap("Tapper e-commerce events", {
     ],
   }],
   trigger: triggers,
-  customTemplate: [{ accountId: "0", containerId: "0", templateId: "1", name: "Tapper - Monitoring Script", fingerprint: "0", templateData: template.replace(/^﻿/, "") }],
+  customTemplate: [{ accountId: "0", containerId: "0", templateId: "1", name: "Tapper - Website tag", fingerprint: "0", templateData: template.replace(/^﻿/, "") }],
 });
 
 const htmlFile = wrap("Tapper e-commerce events (Custom HTML)", {
