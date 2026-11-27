@@ -1,11 +1,9 @@
 # Backlog
 
 - 2026-11-03: **E-commerce events tag (BUILT, import files not yet imported into a live GTM account).** The template got a second tag type (docs/ecommerce-events/SPEC.md), a Custom HTML fallback and two ready import files. To close: import into a test container, fire each trigger in Preview, read the events in the Tapper app; then Google lists the new first sha of metadata.yaml in the Gallery (typically 2-3 days).
-- 2026-10-18: testing policy, skip path proven by this docs-only change (devops-sre).
-
 Living list of every TODO the user has called out. When the user mentions
 something new, capture it here verbatim before starting work. When something
-lands, move it under "Done" with the SHA / date.
+lands, delete the row (the git log is the record).
 
 Categories:
 
@@ -15,7 +13,6 @@ Categories:
 - **P1 — open**: asked-for but lower urgency, or feature-parity items the
   user wants but hasn't blocked on.
 - **P2 — open**: nice-to-have, future parity, deferred.
-- **Done**: shipped + verified.
 
 ---
 
@@ -51,7 +48,7 @@ Walk through each one before claiming done.)
 
   Post-merge checks (PR #7 merged 2026-09-30, Gallery-served sha
   `295cc787192dcc3bcf2b237b2febebe62a0711a1`, the first `metadata.yaml`
-  entry):
+  entry then; a newer first entry, `a180c2ff`, was added for the e-commerce tag):
   - **By 2026-10-03:** open the template in the Community Template Gallery
     and confirm the listed version is `295cc787`, the permissions show
     `tapper.init` under "Accesses global variables" with execute, and the
@@ -64,7 +61,7 @@ Walk through each one before claiming done.)
        GTM **Preview**, load a page, and confirm the tag status is
        `Succeeded`, `bundle.js` loads from `monitor.tapper.ai`, and
        `tapper.init` is called once with the key.
-  Move this item to Done only when all three hold.
+  Delete this item only when all three hold.
 
   **Read 2026-10-20:** the Gallery JSON lists `295cc787` first but with
   `updateError: 5`, and the served `access_globals` permission still has no
@@ -91,14 +88,6 @@ prioritized.)
 ## Meta / hygiene
 
 - Keep this file fresh: each new explicit user ask gets an entry **before** I
-  start coding it. After it ships and the user confirms, move it under Done.
+  start coding it. After it ships and the user confirms, delete it.
 - Never silently drop an item — if I push back on scope, note the rationale
   inline.
-
----
-
-## Done
-
-(items move here with a one-line note + commit SHA / date once shipped + verified)
-
-- 2026-10-18: testing policy, affected path proven by this docs-only change (devops-sre).
